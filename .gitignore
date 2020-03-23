@@ -1,2 +1,5 @@
 obj
 obj/*
+.purs-repl
+.spago
+output
