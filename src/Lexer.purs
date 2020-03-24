@@ -2,8 +2,9 @@ module Lexer where
 
 import Prelude
 
-import Data.Array.NonEmpty (NonEmptyArray, head)
+import Data.Foldable (foldr)
 import Data.Array as Array
+import Data.Array.NonEmpty (NonEmptyArray, appendArray, singleton, head, cons)
 import Data.Either (Either(..))
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
@@ -32,17 +33,38 @@ type Token =
     , column :: Int
     }
 
+type MatchResult = 
+    { type :: TokenType
+    , result :: Either String RegexResult
+    }
 
 lex :: String -> Array Token
 lex str = 
     let 
-        matchers = (map <<< map) match
-            [ normalHeader
-            , errorHeader
-            ]
-        resultAll = (\x -> x <*> pure str) <$> matchers
+        doMatch :: RegexPair -> String -> MatchResult
+        doMatch pair s = 
+            let m :: String -> Regex -> RegexResult 
+                m = flip match
+
+                regex :: Either String Regex
+                regex = pair.regex
+            in 
+                { type: pair.type
+                , result: (m s) <$> (regex)
+                }
+
+        matchers :: NonEmptyArray (String -> MatchResult)
+        matchers = (map) doMatch allRegex
+
+        resultAll :: NonEmptyArray (MatchResult)
+        resultAll = matchers <*> pure str
+
+        possible :: Array Token
         possible = possibleTokens resultAll
+
+        bestResult :: Maybe Token
         bestResult = chooseBest possible
+
     in  case bestResult of 
             Nothing -> []
             Just best -> [best]
@@ -54,11 +76,41 @@ lex str =
 
 type RegexResult = Maybe(NonEmptyArray(Maybe String))
 
-possibleTokens :: Array (Either String RegexResult) -> Array Token
-possibleTokens xs = []
+possibleTokens :: NonEmptyArray MatchResult -> Array Token
+possibleTokens xs =
+    let acc :: MatchResult -> Array Token -> Array Token
+        acc = \match -> \arr -> 
+                case matchToToken match of 
+                    Nothing -> arr
+                    Just tok -> Array.cons tok arr
+    
+        possible :: Array ( Token )        
+        possible = foldr acc [] xs
+    in possible
+
+    where 
+        matchToToken :: MatchResult -> Maybe Token
+        matchToToken { type: t, result: r } = case r of 
+            Left _ -> Nothing
+            Right result -> resultToToken result t
+        resultToToken :: RegexResult -> TokenType -> Maybe Token
+        resultToToken r t = 
+            case r of 
+                Nothing -> Nothing
+                Just rs -> case head rs of 
+                    Nothing -> Nothing
+                    Just lexeme ->
+                        let token = 
+                                { type: t
+                                , lexeme: lexeme
+                                , line: 0
+                                , column: 0
+                                }
+                        in Just token
 
 chooseBest :: Array Token -> Maybe Token
 chooseBest possible = Array.head possible
+
 
 generateToken :: RegexResult -> Array Token
 generateToken x = 
@@ -75,6 +127,21 @@ generateToken x =
                         }
                 in [token]
 
+
+type RegexPair = 
+    { type :: TokenType
+    , regex :: Either String Regex
+    }
+
+allRegex :: NonEmptyArray RegexPair
+allRegex =
+    let normal = { type: NormalHeader, regex: normalHeader }
+        error = { type: ErrorHeader, regex: errorHeader }
+    in 
+        singleton normal `appendArray` 
+                [ error
+
+                ]
 
 normalHeader :: Either String Regex
 normalHeader = regex "^%%_normal_%%" noFlags
