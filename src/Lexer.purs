@@ -38,30 +38,50 @@ type MatchResult =
     , result :: Either String RegexResult
     }
 
+type RegexResult = Maybe(NonEmptyArray(Maybe String))
+
+type RegexPair = 
+    { type :: TokenType
+    , regex :: Either String Regex
+    }
+
 lex :: String -> Array Token
 lex str = 
     let 
-        doMatch :: RegexPair -> String -> MatchResult
-        doMatch pair s = 
-            let m :: String -> Regex -> RegexResult 
-                m = flip match
-
-                regex :: Either String Regex
-                regex = pair.regex
-            in 
-                { type: pair.type
-                , result: (m s) <$> (regex)
-                }
-
         matchers :: NonEmptyArray (String -> MatchResult)
-        matchers = (map) doMatch allRegex
+        matchers = doMatch <$> all
+            where   all :: NonEmptyArray RegexPair
+                    all = allRegex
+                    doMatch :: RegexPair -> String -> MatchResult
+                    doMatch pair s = 
+                        let m :: String -> Regex -> RegexResult 
+                            m = flip match
+
+                            regex :: Either String Regex
+                            regex = pair.regex
+                        in 
+                            { type: pair.type
+                            , result: (m s) <$> (regex)
+                            }
 
         resultAll :: NonEmptyArray (MatchResult)
-        resultAll = matchers <*> pure str
+        resultAll = matchers <*> pure s
+            where s :: String
+                  s = str
 
         possible :: Array Token
-        possible = possibleTokens resultAll
-
+        possible = 
+            let tokens = possibleTokens resultAll
+            in  if Array.null tokens 
+                then 
+                    let fail = 
+                            { type: FAIL
+                            , lexeme: str
+                            , line: 0
+                            , column: 0
+                            }
+                    in [ fail ]
+                else tokens
         bestResult :: Maybe Token
         bestResult = chooseBest possible
 
@@ -69,28 +89,20 @@ lex str =
             Nothing -> []
             Just best -> [best]
 
-type RegexResult = Maybe(NonEmptyArray(Maybe String))
 
 possibleTokens :: NonEmptyArray MatchResult -> Array Token
 possibleTokens xs =
-    let acc :: MatchResult -> Array Token -> Array Token
-        acc = \match -> \arr -> 
-                case matchToToken match of 
-                    Nothing -> arr
-                    Just tok -> Array.cons tok arr
-    
+    let 
         possible :: Array ( Token )        
         possible = foldr acc [] xs
-    in  if Array.null possible
-        then let fail =
-                    { type: FAIL
-                    , lexeme: ""
-                    , line: 0
-                    , column: 0
-                    } 
-             in  [ fail ]
-        else possible
-
+            where
+                acc :: MatchResult -> Array Token -> Array Token
+                acc = \match -> \arr -> 
+                        case matchToToken match of 
+                            Nothing -> arr
+                            Just tok -> Array.cons tok arr
+    in  
+        possible
     where 
         matchToToken :: MatchResult -> Maybe Token
         matchToToken { type: t, result: r } = case r of 
@@ -132,10 +144,6 @@ generateToken x =
                 in [token]
 
 
-type RegexPair = 
-    { type :: TokenType
-    , regex :: Either String Regex
-    }
 
 allRegex :: NonEmptyArray RegexPair
 allRegex =
