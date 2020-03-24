@@ -3,3 +3,4 @@ obj/*
 .purs-repl
 .spago
 output
+.psc-ide-port

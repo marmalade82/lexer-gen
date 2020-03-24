@@ -4,8 +4,12 @@ import Prelude
 
 import Effect (Effect)
 import Effect.Class.Console (log)
+import Effect.Aff (launchAff_)
+import Test.Spec.Discovery (discover)
+import Test.Spec.Reporter.Console (consoleReporter)
+import Test.Spec.Runner (run)
 
 main :: Effect Unit
-main = do
-  log "🍝"
-  log "You should add some tests."
+main = launchAff_ do
+  specs <- discover ".*Spec"
+  run [consoleReporter] specs
