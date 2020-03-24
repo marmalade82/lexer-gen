@@ -4,7 +4,7 @@ import Prelude
 
 import Data.Foldable (foldr)
 import Data.Array as Array
-import Data.Array.NonEmpty (NonEmptyArray, appendArray, singleton, head, cons)
+import Data.Array.NonEmpty (NonEmptyArray, appendArray, singleton, head)
 import Data.Either (Either(..))
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
@@ -68,11 +68,6 @@ lex str =
     in  case bestResult of 
             Nothing -> []
             Just best -> [best]
-        --matchNormal = match <$> normalHeader 
-        --result = matchNormal <*> pure str
-    --in  case result of 
-    --        Left _ -> []
-    --        Right x -> generateToken x
 
 type RegexResult = Maybe(NonEmptyArray(Maybe String))
 
@@ -86,7 +81,15 @@ possibleTokens xs =
     
         possible :: Array ( Token )        
         possible = foldr acc [] xs
-    in possible
+    in  if Array.null possible
+        then let fail =
+                    { type: FAIL
+                    , lexeme: ""
+                    , line: 0
+                    , column: 0
+                    } 
+             in  [ fail ]
+        else possible
 
     where 
         matchToToken :: MatchResult -> Maybe Token
@@ -108,6 +111,7 @@ possibleTokens xs =
                                 }
                         in Just token
 
+-- TODO need to write algorithm for choosing best token possible
 chooseBest :: Array Token -> Maybe Token
 chooseBest possible = Array.head possible
 
@@ -137,14 +141,39 @@ allRegex :: NonEmptyArray RegexPair
 allRegex =
     let normal = { type: NormalHeader, regex: normalHeader }
         error = { type: ErrorHeader, regex: errorHeader }
+        default = { type: DefaultHeader, regex: defaultHeader }
+        errorM = { type: ErrorMessage, regex: errorMessage }
+        regexTok = { type: Regex, regex: regexT }
+        terminatorTok = { type : Terminator, regex: terminator }
+        nameTok = { type: Name, regex: name }
     in 
         singleton normal `appendArray` 
                 [ error
-
+                , default
+                , errorM
+                , regexTok
+                , terminatorTok
+                , nameTok
                 ]
 
-normalHeader :: Either String Regex
-normalHeader = regex "^%%_normal_%%" noFlags
+    where 
+        normalHeader :: Either String Regex
+        normalHeader = regex "^%%_normal_%%" noFlags
 
-errorHeader :: Either String Regex
-errorHeader = regex "^%%_error_%%" noFlags
+        errorHeader :: Either String Regex
+        errorHeader = regex "^%%_error_%%" noFlags
+
+        defaultHeader :: Either String Regex
+        defaultHeader = regex "^%%_default_%%" noFlags
+
+        errorMessage :: Either String Regex
+        errorMessage = regex "^\".*\"" noFlags
+
+        regexT :: Either String Regex
+        regexT = regex "^\\(.+\\)" noFlags
+
+        terminator :: Either String Regex
+        terminator = regex "^\\;" noFlags 
+
+        name :: Either String Regex
+        name = regex "^[\\-\\_\\w]+" noFlags
