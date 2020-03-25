@@ -81,14 +81,14 @@ doLex str c l =
                             , result: (m s) <$> (regex)
                             }
 
-        resultAll :: NonEmptyArray (MatchResult)
-        resultAll = matchers <*> pure s
+        matchResults :: NonEmptyArray (MatchResult)
+        matchResults = matchers <*> pure s
             where s :: String
                   s = str
 
-        possible :: NonEmptyArray Token
-        possible = 
-            let tokens = possibleTokens resultAll c l
+        possibleToks :: NonEmptyArray Token
+        possibleToks = 
+            let tokens = possibleTokens matchResults c l
             in  case fromArray tokens of 
                     Nothing -> 
                         let fail = 
@@ -100,17 +100,17 @@ doLex str c l =
                         in singleton fail
                     Just arr -> arr
 
-        bestResult :: Token
-        bestResult = chooseBest possible
+        bestToken :: Token
+        bestToken = chooseBest possibleToks
 
     in  if length str == 0 
         then []
         else 
-            case bestResult.type of 
-                FAIL -> [ bestResult ]
+            case bestToken.type of 
+                FAIL -> [ bestToken ]
                 x -> 
                     let resultLength :: Int
-                        resultLength = length bestResult.lexeme
+                        resultLength = length bestToken.lexeme
                 
                         remaining :: String 
                         remaining = drop resultLength str
@@ -119,14 +119,14 @@ doLex str c l =
                         nextColumn = 
                             if x /= WhiteSpace 
                             then c + resultLength
-                            else newColumnCount bestResult.lexeme c
+                            else newColumnCount bestToken.lexeme c
 
                         nextLine :: LineIndex
                         nextLine = 
                             if x /= WhiteSpace 
                             then l
-                            else l + (newlineCount bestResult.lexeme)
-                    in  Array.cons bestResult $ doLex remaining nextColumn nextLine
+                            else l + (newlineCount bestToken.lexeme)
+                    in  Array.cons bestToken $ doLex remaining nextColumn nextLine
     where 
         newlineCount :: String -> Int
         newlineCount s = 
