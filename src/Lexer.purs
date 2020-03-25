@@ -185,26 +185,9 @@ possibleTokens xs c l =
                         in Just token
 
 -- TODO need to write algorithm for choosing best token possible
+-- This may not actually be useful here, since my token classes seem to be exclusive of each other.
 chooseBest :: NonEmptyArray Token -> Token
 chooseBest possible = head possible
-
-
-generateToken :: RegexResult -> Array Token
-generateToken x = 
-    case x of 
-        Nothing -> []
-        Just xs -> case head xs of 
-            Nothing -> []
-            Just lexeme -> 
-                let token = 
-                        { type: NormalHeader
-                        , lexeme: lexeme
-                        , line: 0
-                        , column: 0
-                        }
-                in [token]
-
-
 
 allRegex :: NonEmptyArray RegexPair
 allRegex =
