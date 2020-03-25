@@ -2,14 +2,16 @@ module Lexer where
 
 import Prelude
 
-import Data.Foldable (foldr)
 import Data.Array as Array
-import Data.Array.NonEmpty (NonEmptyArray, appendArray, singleton, head)
+import Data.Array.NonEmpty (NonEmptyArray, appendArray, fromArray, head, singleton)
 import Data.Either (Either(..))
+import Data.Foldable (foldr)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..))
+import Data.String (CodePoint, codePointFromChar, drop, length)
+import Data.String as Str
 import Data.String.Regex (Regex, match, regex)
 import Data.String.Regex.Flags (noFlags)
 
@@ -22,6 +24,7 @@ data TokenType
     | Terminator
     | Name
     | FAIL
+    | WhiteSpace
 derive instance genericTokenType :: Generic TokenType _
 instance showTokenType :: Show TokenType where show = genericShow
 instance eqTokenType :: Eq TokenType where eq = genericEq
@@ -45,8 +48,22 @@ type RegexPair =
     , regex :: Either String Regex
     }
 
+type ColumnIndex = Int
+type LineIndex = Int
+
 lex :: String -> Array Token
 lex str = 
+    let tokens :: Array Token
+        tokens = doLex str 0 0
+
+        removeWhiteSpace :: Array Token -> Array Token
+        removeWhiteSpace toks = Array.filter isNotWhitespace toks
+            where isNotWhitespace = \x -> x.type /= WhiteSpace
+
+    in  removeWhiteSpace tokens
+
+doLex :: String -> ColumnIndex -> LineIndex -> Array Token
+doLex str c l =
     let 
         matchers :: NonEmptyArray (String -> MatchResult)
         matchers = doMatch <$> all
@@ -69,29 +86,66 @@ lex str =
             where s :: String
                   s = str
 
-        possible :: Array Token
+        possible :: NonEmptyArray Token
         possible = 
-            let tokens = possibleTokens resultAll
-            in  if Array.null tokens 
-                then 
-                    let fail = 
-                            { type: FAIL
-                            , lexeme: str
-                            , line: 0
-                            , column: 0
-                            }
-                    in [ fail ]
-                else tokens
-        bestResult :: Maybe Token
+            let tokens = possibleTokens resultAll c l
+            in  case fromArray tokens of 
+                    Nothing -> 
+                        let fail = 
+                                { type: FAIL
+                                , lexeme: str
+                                , line: l
+                                , column: c
+                                }
+                        in singleton fail
+                    Just arr -> arr
+        bestResult :: Token
         bestResult = chooseBest possible
 
-    in  case bestResult of 
-            Nothing -> []
-            Just best -> [best]
+    in  if length str == 0 
+        then []
+        else 
+            case bestResult.type of 
+                FAIL -> [ bestResult ]
+                x -> 
+                    let resultLength :: Int
+                        resultLength = length bestResult.lexeme
+                
+                        remaining :: String 
+                        remaining = drop resultLength str
+
+                        nextColumn :: ColumnIndex
+                        nextColumn = 
+                            if x /= WhiteSpace 
+                            then c + resultLength
+                            else columnCount bestResult.lexeme
+
+                        nextLine :: LineIndex
+                        nextLine = 
+                            if x /= WhiteSpace 
+                            then l
+                            else l + (newlineCount bestResult.lexeme)
+                    in  Array.cons bestResult $ doLex remaining nextColumn nextLine
+    where 
+        newlineCount :: String -> Int
+        newlineCount s = 
+            let 
+                newlines :: Array CodePoint
+                newlines = Array.filter isNewline $ Str.toCodePointArray s
+            in Array.length newlines
+            where isNewline :: CodePoint -> Boolean
+                  isNewline x = x == (codePointFromChar '\n')
+        columnCount :: String -> Int
+        columnCount s = 
+            let beforeLastNewline :: Array CodePoint
+                beforeLastNewline = Array.takeWhile isNotNewline $ Array.reverse (Str.toCodePointArray s)
+            in Array.length beforeLastNewline
+            where isNotNewline :: CodePoint -> Boolean
+                  isNotNewline x = x /= (codePointFromChar '\n')
 
 
-possibleTokens :: NonEmptyArray MatchResult -> Array Token
-possibleTokens xs =
+possibleTokens :: NonEmptyArray MatchResult -> ColumnIndex -> LineIndex -> Array Token
+possibleTokens xs c l =
     let 
         possible :: Array ( Token )        
         possible = foldr acc [] xs
@@ -118,14 +172,14 @@ possibleTokens xs =
                         let token = 
                                 { type: t
                                 , lexeme: lexeme
-                                , line: 0
-                                , column: 0
+                                , line: l
+                                , column: c
                                 }
                         in Just token
 
 -- TODO need to write algorithm for choosing best token possible
-chooseBest :: Array Token -> Maybe Token
-chooseBest possible = Array.head possible
+chooseBest :: NonEmptyArray Token -> Token
+chooseBest possible = head possible
 
 
 generateToken :: RegexResult -> Array Token
@@ -154,6 +208,7 @@ allRegex =
         regexTok = { type: Regex, regex: regexT }
         terminatorTok = { type : Terminator, regex: terminator }
         nameTok = { type: Name, regex: name }
+        spaceTok = { type: WhiteSpace, regex: spaces}
     in 
         singleton normal `appendArray` 
                 [ error
@@ -162,6 +217,7 @@ allRegex =
                 , regexTok
                 , terminatorTok
                 , nameTok
+                , spaceTok
                 ]
 
     where 
@@ -185,3 +241,7 @@ allRegex =
 
         name :: Either String Regex
         name = regex "^[\\-\\_\\w]+" noFlags
+
+        spaces :: Either String Regex
+        spaces = regex "^[\n ]+" noFlags
+        --spaces = regex "^\\s+" noFlags

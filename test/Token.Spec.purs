@@ -3,13 +3,16 @@ module Test.TokenSpec where
 import Prelude
 
 import Lexer (Token, TokenType(..), lex)
-import Test.Spec (Spec, describe, it)
+import Test.Spec (Spec, describe, it, pending)
 import Test.Spec.Assertions (shouldEqual)
 
 spec :: Spec Unit
 spec = describe "Test tokenization of file" do
             individualTokenSpec
             individualLexemeSpec
+            lineCaptureSpec
+            columnCaptureSpec
+            multipleTokenSpec
 
 individualTokenSpec :: Spec Unit
 individualTokenSpec = describe "individual tokens" do 
@@ -64,9 +67,58 @@ individualLexemeSpec = describe "individual lexemes" do
     it "failure" do 
         let result = extractLexeme <$> lex "////"
         result `shouldEqual` [ "////" ]
+    it "whitespace is NOT captured" do 
+        let result = extractLexeme <$> lex "  \n"
+        result `shouldEqual` []
+
+lineCaptureSpec :: Spec Unit
+lineCaptureSpec = describe "line capture" do 
+    describe "one token per line" do 
+        it "one line" do 
+            let result = extractLine <$> lex "%%_normal_%%"
+            result `shouldEqual` [ 0 ]
+        it "two lines" do 
+            let result = extractLine <$> lex "%%_normal%% \n %%_error_%%"
+            result `shouldEqual` [ 0, 1]
+    describe "two tokens per line" do 
+        it "one line" do 
+            let result = extractLine <$> lex "%%_normal_%% %%_normal_%%"
+            result `shouldEqual` [ 0, 0 ]
+        it "two lines" do 
+            let result = extractLine <$> lex "%%_normal_%% %%_normal_%% \n %%_error_%% %%_error_%% "
+            result `shouldEqual` [ 0, 0, 1, 1 ]
+
+columnCaptureSpec :: Spec Unit
+columnCaptureSpec = describe "column capture" do 
+    describe "one token per line" do 
+        it "one line" do 
+            let result = extractColumn <$> lex "%%_normal_%%"
+            result `shouldEqual` [ 0 ]
+        it "two lines" do 
+            let result = extractColumn <$> lex "%%_normal%% \n %%_error_%%"
+            result `shouldEqual` [ 0, 1]
+    describe "two tokens per line" do 
+        it "one line" do 
+            let result = extractColumn <$> lex "%%_normal_%% %%_normal_%%"
+            result `shouldEqual` [ 0, 13 ]
+        it "two lines" do 
+            let result = extractColumn <$> lex "%%_normal_%% %%_normal_%% \n %%_error_%% %%_error_%% "
+            result `shouldEqual` [ 0, 13, 1, 13 ]
+
+multipleTokenSpec :: Spec Unit
+multipleTokenSpec = describe "multiple tokens" do 
+    pending "all tokens but failure"
+    pending "failure within tokens"
+
 
 extractType :: Token -> TokenType
 extractType t = t.type
 
 extractLexeme :: Token -> String
 extractLexeme t = t.lexeme
+
+extractLine :: Token -> Int
+extractLine t = t.line
+
+extractColumn :: Token -> Int
+extractColumn t = t.column
