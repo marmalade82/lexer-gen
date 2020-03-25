@@ -25,6 +25,7 @@ data TokenType
     | Name
     | FAIL
     | WhiteSpace
+    | Default
 derive instance genericTokenType :: Generic TokenType _
 instance showTokenType :: Show TokenType where show = genericShow
 instance eqTokenType :: Eq TokenType where eq = genericEq
@@ -193,21 +194,23 @@ allRegex :: NonEmptyArray RegexPair
 allRegex =
     let normal = { type: NormalHeader, regex: normalHeader }
         error = { type: ErrorHeader, regex: errorHeader }
-        default = { type: DefaultHeader, regex: defaultHeader }
+        defaultH = { type: DefaultHeader, regex: defaultHeader }
         errorM = { type: ErrorMessage, regex: errorMessage }
         regexTok = { type: Regex, regex: regexT }
         terminatorTok = { type : Terminator, regex: terminator }
         nameTok = { type: Name, regex: name }
         spaceTok = { type: WhiteSpace, regex: spaces}
+        defaultTok = { type: Default, regex: default }
     in 
         singleton normal `appendArray` 
                 [ error
-                , default
+                , defaultH
                 , errorM
                 , regexTok
                 , terminatorTok
                 , nameTok
                 , spaceTok
+                , defaultTok
                 ]
 
     where 
@@ -233,5 +236,7 @@ allRegex =
         name = regex "^[\\-\\_\\w]+" noFlags
 
         spaces :: Either String Regex
-        --spaces = regex "^[\n ]+" noFlags
         spaces = regex "^\\s+" noFlags
+
+        default :: Either String Regex
+        default = regex "^\\$Default" noFlags

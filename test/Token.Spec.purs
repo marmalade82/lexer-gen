@@ -8,7 +8,7 @@ import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual)
 
 spec :: Spec Unit
-spec = describe "Test tokenization of file" do
+spec = describe "Test tokenization of string" do
             individualTokenSpec
             individualLexemeSpec
             lineCaptureSpec
@@ -41,6 +41,9 @@ individualTokenSpec = describe "individual tokens" do
     it "failure" do 
         let result = extractType <$> lex "////"
         result `shouldEqual` [ FAIL ]
+    it "default" do 
+        let result = extractType <$> lex "$Default"
+        result `shouldEqual` [ Default ]
 
 individualLexemeSpec :: Spec Unit 
 individualLexemeSpec = describe "individual lexemes" do 
@@ -118,8 +121,8 @@ columnCaptureSpec = describe "column capture" do
 multipleTokenSpec :: Spec Unit
 multipleTokenSpec = describe "multiple tokens" do 
     describe "all tokens but failure" do 
-        let strings = ["%%_normal_%%", "%%_error_%%", "%%_default_%%", "\"error\"", "(regex)", "name", ";"]
-        let expected = [ NormalHeader, ErrorHeader, DefaultHeader, ErrorMessage, Regex, Name, Terminator] :: Array TokenType
+        let strings = ["%%_normal_%%", "%%_error_%%", "%%_default_%%", "\"error\"", "(regex)", "name", ";", "$Default" ]
+        let expected = [ NormalHeader, ErrorHeader, DefaultHeader, ErrorMessage, Regex, Name, Terminator, Default] :: Array TokenType
         it "one line" do 
             let string = Str.joinWith "" strings :: String
             let result = extractType <$> lex string :: Array TokenType

@@ -11,12 +11,14 @@ The goal of this codebase is to take a specification file and generate the code 
 
 ## Grammar
 
-The following grammar for the codebase was designed from the beginning to be suitable for LL(1) parsing:
+The following grammar for the codebase is suitable for LL(1) parsing.
 
 ```
 [ ] Program                 ->              NormalTokens ErrorTokens DefaultTokens
 [ ] NormalTokens            ->              "%%_normal_%%" NormalSpecs
 [ ] ErrorTokens             ->              "%%_error_%%" ErrorSpecs
+                            |               ""  
+                                                // User could choose not to provide any error specs
 [ ] DefaultTokens           ->              "%%_default_%% DefaultSpecs  
                                                 // Allow user to customize any default settings
 [ ]                         |               ""
@@ -34,4 +36,101 @@ The following grammar for the codebase was designed from the beginning to be sui
 [ ] DefaultSpecs            ->              DefaultError
 [ ]                         |               ""
 [ ] DefaultError            ->              "$Default" ErrorMessage OptionalSync ";"
+```
+
+## Building the LL(1) Parsing Table
+
+Terminal tokens:
+
+```
+- normalHeader      -> nh
+- errorHeader       -> eh
+- defaultHeader     -> dh
+- ;                 -> ;
+- tokenName         -> n
+- errorMessage      -> em
+- regex             -> r
+- default           -> d
+```
+
+First Sets:
+
+```
+First(nh)               = { nh }
+First(eh)               = { eh }
+First(dh)               = { dh }
+First(;)                = { ; }
+First(n)                = { n }
+First(em)               = { em }
+First(r)                = { r }
+First(d)                = { d }
+First(DefaultError)     = { d }
+First(DefaultSpecs)     = First(DefaultError) union { "" } = { d, ""}
+First(OptionalSync)     = First(n) union { "" } = { n, "" }
+First(ErrorSpec)        = { n }
+First(ErrorSpecs)       = First(ErrorSpec) union { "" } = { n, "" }
+First(NormalSpec)       = { n }
+First(NormalSpecs)      = First(NormalSpec) union { "" } = { n, "" }
+First(DefaultTokens)    = { dh, "" }
+First(ErrorTokens)      = { eh, "" }
+First(NormalTokens)     = { nh }
+First(Program)          = First(NormalTokens) = { nh }
+```
+
+Follow Sets:
+
+```
+Let F(t) = Follow(t) and FirstE(t) = First(t) - { "" }
+
+Program                 ->              NormalTokens ErrorTokens DefaultTokens
+    F(Program) subset F(DefaultTokens)
+    { $ } subset F(Program)
+    F(Program) subset F(ErrorTokens)
+    F(Program) subset F(NormalTokens)
+    FirstE(ErrorTokens) subset F(NormalTokens)
+    FirstE(DefaultTokens) subset F(ErrorTokens)
+NormalTokens            ->              "%%_normal_%%" NormalSpecs
+    F(NormalTokens) subset F(NormalSpecs)
+    F(NormalTokens) subset F(nh)
+    FirstE(NormalSpecs) subset F(nh)
+ErrorTokens             ->              "%%_error_%%" ErrorSpecs
+                        |               ""  
+    F(ErrorTokens) subset F(ErrorSpecs)
+    F(ErrorTokens) subset F(eh)
+    FirstE(ErrorSpecs) subset F(eh)
+DefaultTokens           ->              "%%_default_%% DefaultSpecs  
+                        |               ""
+    F(DefaultTokens) subset F(DefaultSpecs)
+    F(DefaultTokens) subset F(dh)
+    FirstE(DefaultSpecs) subset F(dh)
+NormalSpecs             ->              NormalSpec NormalSpecs
+                        |               ""
+    F(NormalSpecs) = F(NormalSpecs)
+    F(NormalSpecs) subset F(NormalSpec)
+    FirstE(NormalSpecs) subset F(NormalSpec)
+NormalSpec              ->              TokenName Regex ";"
+    F(NormalSpec) subset F(;)
+    { ; } subset F(Regex)
+    { r } subset F(n)
+ErrorSpecs              ->              ErrorSpec ErrorSpecs
+                        |               ""
+    F(ErrorSpecs) = F(ErrorSpecs)
+    F(ErrorSpecs) subset F(ErrorSpec)
+    FirstE(ErrorSpecs) subset F(ErrorSpec)
+ErrorSpec               ->              TokenName ErrorMessage OptionalSync ";"
+    F(ErrorSpec) subset F(;)
+    { ; } subset F(OptionalSync)
+    FirstE(OptionalSync) subset F(ErrorMessage)
+    { em } subset F(TokenName)
+OptionalSync            ->              TokenName
+                        |               ""
+    F(OptionalSync) subset F(TokenName)
+DefaultSpecs            ->              DefaultError
+                        |               ""
+    F(DefaultSpecs) subset F(DefaultError)
+DefaultError            ->              "$Default" ErrorMessage OptionalSync ";"
+    F(DefaultError) subset F(;)
+    { ; } subset F(OptionalSync)
+    FirstE(OptionalSync) subset F(ErrorMessage)
+    { em } subset F(d)
 ```
