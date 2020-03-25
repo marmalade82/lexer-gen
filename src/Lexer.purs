@@ -10,7 +10,7 @@ import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..))
-import Data.String (CodePoint, codePointFromChar, drop, length)
+import Data.String (CodePoint, Pattern(..), codePointFromChar, drop, length)
 import Data.String as Str
 import Data.String.Regex (Regex, match, regex)
 import Data.String.Regex.Flags (noFlags)
@@ -99,6 +99,7 @@ doLex str c l =
                                 }
                         in singleton fail
                     Just arr -> arr
+
         bestResult :: Token
         bestResult = chooseBest possible
 
@@ -118,7 +119,7 @@ doLex str c l =
                         nextColumn = 
                             if x /= WhiteSpace 
                             then c + resultLength
-                            else columnCount bestResult.lexeme
+                            else newColumnCount bestResult.lexeme c
 
                         nextLine :: LineIndex
                         nextLine = 
@@ -135,11 +136,17 @@ doLex str c l =
             in Array.length newlines
             where isNewline :: CodePoint -> Boolean
                   isNewline x = x == (codePointFromChar '\n')
-        columnCount :: String -> Int
-        columnCount s = 
-            let beforeLastNewline :: Array CodePoint
-                beforeLastNewline = Array.takeWhile isNotNewline $ Array.reverse (Str.toCodePointArray s)
-            in Array.length beforeLastNewline
+        newColumnCount :: String -> ColumnIndex -> Int
+        newColumnCount s original = 
+            if not Str.contains (Pattern "\n") s
+            then original + (length s)
+            else 
+                let beforeLastNewline :: Array CodePoint
+                    beforeLastNewline = Array.takeWhile isNotNewline $ Array.reverse (Str.toCodePointArray s)
+
+                    new :: ColumnIndex
+                    new = Array.length beforeLastNewline
+                in  new
             where isNotNewline :: CodePoint -> Boolean
                   isNotNewline x = x /= (codePointFromChar '\n')
 
@@ -243,5 +250,5 @@ allRegex =
         name = regex "^[\\-\\_\\w]+" noFlags
 
         spaces :: Either String Regex
-        spaces = regex "^[\n ]+" noFlags
-        --spaces = regex "^\\s+" noFlags
+        --spaces = regex "^[\n ]+" noFlags
+        spaces = regex "^\\s+" noFlags

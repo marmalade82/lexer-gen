@@ -2,8 +2,9 @@ module Test.TokenSpec where
 
 import Prelude
 
+import Data.String as Str
 import Lexer (Token, TokenType(..), lex)
-import Test.Spec (Spec, describe, it, pending)
+import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual)
 
 spec :: Spec Unit
@@ -78,7 +79,10 @@ lineCaptureSpec = describe "line capture" do
             let result = extractLine <$> lex "%%_normal_%%"
             result `shouldEqual` [ 0 ]
         it "two lines" do 
-            let result = extractLine <$> lex "%%_normal%% \n %%_error_%%"
+            let tokens = lex "%%_normal_%% \n %%_error_%%"
+            let types = extractType <$> tokens
+            types `shouldEqual` [ NormalHeader, ErrorHeader]
+            let result = extractLine <$> tokens
             result `shouldEqual` [ 0, 1]
     describe "two tokens per line" do 
         it "one line" do 
@@ -87,6 +91,9 @@ lineCaptureSpec = describe "line capture" do
         it "two lines" do 
             let result = extractLine <$> lex "%%_normal_%% %%_normal_%% \n %%_error_%% %%_error_%% "
             result `shouldEqual` [ 0, 0, 1, 1 ]
+    it "failure" do 
+        let result = extractLine <$> lex "%%_normal_%% \n %%_FAIL_%%"
+        result `shouldEqual` [0, 1]
 
 columnCaptureSpec :: Spec Unit
 columnCaptureSpec = describe "column capture" do 
@@ -95,7 +102,7 @@ columnCaptureSpec = describe "column capture" do
             let result = extractColumn <$> lex "%%_normal_%%"
             result `shouldEqual` [ 0 ]
         it "two lines" do 
-            let result = extractColumn <$> lex "%%_normal%% \n %%_error_%%"
+            let result = extractColumn <$> lex "%%_normal_%% \n %%_error_%%"
             result `shouldEqual` [ 0, 1]
     describe "two tokens per line" do 
         it "one line" do 
@@ -104,11 +111,37 @@ columnCaptureSpec = describe "column capture" do
         it "two lines" do 
             let result = extractColumn <$> lex "%%_normal_%% %%_normal_%% \n %%_error_%% %%_error_%% "
             result `shouldEqual` [ 0, 13, 1, 13 ]
+    it "failure" do 
+        let result = extractColumn <$> lex "%%_normal_%% \n %%_error_%%"
+        result `shouldEqual` [ 0, 1]
 
 multipleTokenSpec :: Spec Unit
 multipleTokenSpec = describe "multiple tokens" do 
-    pending "all tokens but failure"
-    pending "failure within tokens"
+    describe "all tokens but failure" do 
+        let strings = ["%%_normal_%%", "%%_error_%%", "%%_default_%%", "\"error\"", "(regex)", "name", ";"]
+        let expected = [ NormalHeader, ErrorHeader, DefaultHeader, ErrorMessage, Regex, Name, Terminator] :: Array TokenType
+        it "one line" do 
+            let string = Str.joinWith "" strings :: String
+            let result = extractType <$> lex string :: Array TokenType
+            result `shouldEqual` expected
+        it "separated by spaces" do 
+            let string = Str.joinWith "  " strings :: String
+            let result = extractType <$> lex string :: Array TokenType
+            result `shouldEqual` expected
+        it "separated by newline" do 
+            let string = Str.joinWith "\n" strings :: String
+            let result = extractType <$> lex string :: Array TokenType
+            result `shouldEqual` expected
+        it "separated by mix of whitespace" do 
+            let string = Str.joinWith " \n " strings :: String
+            let result = extractType <$> lex string :: Array TokenType
+            result `shouldEqual` expected
+    it "failure within tokens" do
+        let strings = ["%%_normal_%%", "%%_error_%%", "%%_FAIL_%%", "\"error\"", "(regex)", "name", ";"]
+        let string = Str.joinWith "" strings :: String
+        let result = extractType <$> lex string :: Array TokenType
+        let expected = [ NormalHeader, ErrorHeader, FAIL ] :: Array TokenType
+        result `shouldEqual` expected
 
 
 extractType :: Token -> TokenType
