@@ -77,7 +77,7 @@ First(NormalTokens)     = { nh }
 First(Program)          = First(NormalTokens) = { nh }
 ```
 
-Follow Sets:
+Follow Sets Analysis of Grammar:
 
 ```
 Let F(t) = Follow(t) and FirstE(t) = First(t) - { "" }
@@ -134,3 +134,39 @@ DefaultError            ->              "$Default" ErrorMessage OptionalSync ";"
     FirstE(OptionalSync) subset F(ErrorMessage)
     { em } subset F(d)
 ```
+
+Follow Sets:
+
+```
+F(DefaultError) contains F(DefaultSpecs)                    = { $ }
+F(DefaultSpecs) contains F(DefaultTokens)                   = { $ } 
+F(DefaultTokens) contains F(Program)                        = { $ }
+F(Program)                                                  = { $ }
+F(OptionalSync) contains { ; }                              = { ; }
+F(ErrorSpec) contains F(ErrorSpecs)                         = { dh, $ }
+                      FirstE(ErrorSpecs)       union { n }  = { dh, $, n }
+F(ErrorSpecs) contains F(ErrorTokens)                       = { dh, $ }
+F(ErrorTokens) contains FirstE(DefaultTokens)               = { dh }
+                        F(Program)             union { $ }  = { dh, $ }
+F(NormalSpec) contains F(NormalSpecs),                      = { eh, $ }
+                        FirstE(NormalSpecs)    union { n }  = { eh, $, n }             
+F(NormalSpecs) contains F(NormalTokens)                     = { eh, $ }
+F(NormalTokens) contains FirstE(ErrorTokens)                = { eh }
+                         F(Program)            union { $ }  = { eh, $ }
+```
+
+LL1 Parsing Table:
+
+|                   |   $               |    ""             |  n                        |     ;      |   d                       |    dh            |   eh          |   nh
+|-------            |------             |---------          |-------                    |--------    |----------                 | --------         | -----------   | -----
+| Program           |                   |                   |                           |            |                           |                  |               | NormalTokens, ErrorTokens, DefaultTokens
+| NormalTokens      |                   |                   |                           |            |                           |                  |               | nh NormalSpecs
+| ErrorTokens       | ""                | ""                |                           |            |                           |  ""              | eh ErrorSpecs |
+| DefaultTokens     | ""                | ""                |                           |            |                           | dh DefaultSpecs  |
+| NormalSpecs       | ""                | ""                | NormalSpec, NormalSpecs   |            |                           |                  |  ""
+| NormalSpec        |                   |                   | n, r, ";"                 |
+| ErrorSpecs        | ""                | ""                | ErrorSpec, ErrorSpecs     |            |                           |  ""
+| ErrorSpec         |                   |                   | n,em,OptionalSync,";"     |
+| DefaultSpecs      | ""                | ""                |                           |            | DefaultError
+| DefaultError      |                   |                   |                           |            | d,em,OptionalSync,";"
+| OptionalSync      |                   | ""                |  n                        |     ""
