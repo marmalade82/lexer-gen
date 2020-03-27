@@ -2,10 +2,11 @@ module Parser where
 
 import Prelude
 
-import Data.Array.NonEmpty (NonEmptyArray, appendArray, singleton)
+import Data.Array.NonEmpty (NonEmptyArray, appendArray, singleton, head)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
+import Data.List.Lazy as LL
 import Data.Map (Map, fromFoldable)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
@@ -93,6 +94,42 @@ type ParseError =
 
 parse :: NonEmptyArray Token -> ParseResult
 parse arr = 
+    let initialStack :: Stack
+        initialStack = pushStack DProgram $ pushStack DEof emptyStack
+        result = 
+            { tree: Nothing
+            , success: false
+            , errors: []
+            }
+    in result
+
+doParse :: NonEmptyArray Token -> Stack -> ParseResult
+doParse ts s r = 
+    let leftmost :: Maybe DerivationType
+        leftmost = topStack s
+
+        nextToken :: Token
+        nextToken = head ts
+
+        -- a monad transformer might be helpful here. We want to work with
+        -- the possibility that the leftmost did not exist, but we also 
+        -- want to be able to report errors ...
+
+        nextStack :: Stack
+        nextStack =
+            if isTerminal leftmost
+            then 
+                if nextToken == leftmost
+                then popStack s
+                else s
+            else 
+                let entry = get table leftmost nextToken
+
+                in  case entry of 
+                        Nothing -> 
+                        Just s -> 
+
+    in
         { tree: Nothing
         , success: false
         , errors: []
@@ -251,3 +288,22 @@ table =
             where 
                 t = Discard
                 n = Replace $ singleton DName
+
+type Stack = LL.List (DerivationType)
+
+emptyStack :: Stack
+emptyStack = LL.nil
+
+pushStack :: DerivationType -> Stack -> Stack
+pushStack = LL.cons
+
+topStack :: Stack -> Maybe DerivationType
+topStack = LL.head
+
+popStack :: Stack -> Stack
+popStack s = case LL.tail s of
+    Nothing -> s
+    Just rest -> rest
+
+sizeStack :: Stack -> Int
+sizeStack = LL.length

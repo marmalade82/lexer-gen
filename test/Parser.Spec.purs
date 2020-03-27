@@ -12,10 +12,10 @@ import Test.Spec.Assertions (shouldEqual)
 spec :: Spec Unit
 spec = describe "Parsing" do 
     headerSpec
-    normalSectionSpec
-    errorSectionSpec
-    defaultSectionSpec
-    errorSpec
+    --normalSectionSpec
+    --errorSectionSpec
+    --defaultSectionSpec
+    --errorSpec
 
 headerSpec :: Spec Unit
 headerSpec = describe "Headers" do 
