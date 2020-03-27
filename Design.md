@@ -40,7 +40,7 @@ The following grammar for the codebase is suitable for LL(1) parsing.
 
 ## Building the LL(1) Parsing Table
 
-Terminal tokens:
+### Terminal tokens:
 
 ```
 - normalHeader      -> nh
@@ -53,7 +53,7 @@ Terminal tokens:
 - default           -> d
 ```
 
-First Sets:
+### First Sets:
 
 ```
 First(nh)               = { nh }
@@ -77,7 +77,7 @@ First(NormalTokens)     = { nh }
 First(Program)          = First(NormalTokens) = { nh }
 ```
 
-Follow Sets Analysis of Grammar:
+### Follow Sets Analysis of Grammar:
 
 ```
 Let F(t) = Follow(t) and FirstE(t) = First(t) - { "" }
@@ -135,7 +135,7 @@ DefaultError            ->              "$Default" ErrorMessage OptionalSync ";"
     { em } subset F(d)
 ```
 
-Follow Sets:
+### Follow Sets:
 
 ```
 F(DefaultError) contains F(DefaultSpecs)                    = { $ }
@@ -155,7 +155,8 @@ F(NormalTokens) contains FirstE(ErrorTokens)                = { eh }
                          F(Program)            union { $ }  = { eh, $ }
 ```
 
-LL1 Parsing Table:
+
+### LL1 Parsing Table:
 
 |                   |   $               |    ""             |  n                        |     ;      |   d                       |    dh            |   eh          |   nh
 |-------            |------             |---------          |-------                    |--------    |----------                 | --------         | -----------   | -----
