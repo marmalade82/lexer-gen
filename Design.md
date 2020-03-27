@@ -158,16 +158,16 @@ F(NormalTokens) contains FirstE(ErrorTokens)                = { eh }
 
 ### LL1 Parsing Table:
 
-|                   |   $               |    ""             |  n                        |     ;      |   d                       |    dh            |   eh          |   nh
-|-------            |------             |---------          |-------                    |--------    |----------                 | --------         | -----------   | -----
-| Program           |                   |                   |                           |            |                           |                  |               | NormalTokens, ErrorTokens, DefaultTokens
-| NormalTokens      |                   |                   |                           |            |                           |                  |               | nh NormalSpecs
-| ErrorTokens       | ""                | ""                |                           |            |                           |  ""              | eh ErrorSpecs |
-| DefaultTokens     | ""                | ""                |                           |            |                           | dh DefaultSpecs  |
-| NormalSpecs       | ""                | ""                | NormalSpec, NormalSpecs   |            |                           |                  |  ""
-| NormalSpec        |                   |                   | n, r, ";"                 |
-| ErrorSpecs        | ""                | ""                | ErrorSpec, ErrorSpecs     |            |                           |  ""
-| ErrorSpec         |                   |                   | n,em,OptionalSync,";"     |
-| DefaultSpecs      | ""                | ""                |                           |            | DefaultError
-| DefaultError      |                   |                   |                           |            | d,em,OptionalSync,";"
-| OptionalSync      |                   | ""                |  n                        |     ""
+|                   |   $               |  n                        |     ;      |   d                       |    dh            |   eh          |   nh
+|-------            |------             |-------                    |--------    |----------                 | --------         | -----------   | -----
+| Program           |                   |                           |            |                           |                  |               | NormalTokens, ErrorTokens, DefaultTokens
+| NormalTokens      |                   |                           |            |                           |                  |               | nh NormalSpecs
+| ErrorTokens       | ""                |                           |            |                           |  ""              | eh ErrorSpecs |
+| DefaultTokens     | ""                |                           |            |                           | dh DefaultSpecs  |
+| NormalSpecs       | ""                | NormalSpec, NormalSpecs   |            |                           |                  |  ""
+| NormalSpec        |                   | n, r, ";"                 |
+| ErrorSpecs        | ""                | ErrorSpec, ErrorSpecs     |            |                           |  ""
+| ErrorSpec         |                   | n,em,OptionalSync,";"     |
+| DefaultSpecs      | ""                |                           |            | DefaultError
+| DefaultError      |                   |                           |            | d,em,OptionalSync,";"
+| OptionalSync      |                   |  n                        |     ""
