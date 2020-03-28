@@ -2,12 +2,14 @@ module Parser where
 
 import Prelude
 
-import Data.Array.NonEmpty (NonEmptyArray, appendArray, singleton, head)
+import Data.Array.NonEmpty (NonEmptyArray, appendArray, singleton )
+import Data.Either (Either(..))
+import Data.Foldable (foldl, foldr)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
 import Data.List.Lazy as LL
-import Data.Map (Map, fromFoldable)
+import Data.Map (Map, fromFoldable, lookup)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 
@@ -103,39 +105,68 @@ parse arr =
             }
     in result
 
+type ParseState = 
+    { stack :: Stack
+    , result :: ParseResult
+    }
+
 doParse :: NonEmptyArray Token -> Stack -> ParseResult
-doParse ts s r = 
-    let leftmost :: Maybe DerivationType
-        leftmost = topStack s
+doParse ts s = 
+    let 
+        initialParseState :: ParseState
+        initialParseState = 
+            { stack: pushStack DProgram $ pushStack DEof emptyStack
+            , result:
+                { tree: Nothing
+                , success: false
+                , errors: []
+                }
+            }
 
-        nextToken :: Token
-        nextToken = head ts
-
-        -- a monad transformer might be helpful here. We want to work with
-        -- the possibility that the leftmost did not exist, but we also 
-        -- want to be able to report errors ...
-
-        nextStack :: Stack
-        nextStack =
-            if isTerminal leftmost
-            then 
-                if nextToken == leftmost
-                then popStack s
-                else s
-            else 
-                let entry = get table leftmost nextToken
-
-                in  case entry of 
-                        Nothing -> 
-                        Just s -> 
-
+        state :: ParseState
+        state = foldl acc initialParseState ts
     in
         { tree: Nothing
         , success: false
         , errors: []
-        }
+        } 
+    where
+        acc :: ParseState -> Token -> ParseState
+        acc state t = 
+            let next :: TokenType
+                next = t.type
 
+                nextStack :: Maybe Stack
+                nextStack = do 
+                    leftmost <- topStack state.stack :: Maybe DerivationType
+                    let stack = getNextStack leftmost next state.stack :: Either String Stack
+                    case stack of 
+                        Left _ -> Nothing
+                        Right x -> pure x
+            in  case nextStack of 
+                    Nothing -> state
+                    Just stack ->
+                        { stack: stack
+                        , result: state.result
+                        }
 
+        getNextStack :: DerivationType -> TokenType -> Stack -> Either String Stack
+        getNextStack leftmost next stack = 
+            if isTerminal leftmost
+            then if next `equals` leftmost
+                then Right $ popStack stack -- discard the leftmost symbol at the top of the stack
+                else Left $ "Terminal did not match"
+            else 
+                let entry :: TableEntry
+                    entry = getEntry leftmost next
+                in  case entry of 
+                        STUCK -> Left "Parser got suck here"
+                        Replace arr ->  -- We need to replace the top of the stack with what's in @arr
+                            Right $ foldr push (popStack stack) arr
+                        Discard -> Right $ popStack stack -- Discard tells us the leftmost went to empty string
+                where 
+                    push :: DerivationType -> Stack -> Stack
+                    push de st = pushStack de st
 
 tokenTypeToIndex :: TokenType -> Int
 tokenTypeToIndex t = 
@@ -176,118 +207,165 @@ derivTypeToIndex d =
         DDefault            -> 19
         DEof                -> 20
 
-table :: Table
-table = 
-    let 
-        deriveEntries :: Array (Tuple DeriveIndex (Map TokenIndex TableEntry))
-        deriveEntries = 
-            -- Only the nonterminals get entries
-            [ Tuple (di DProgram) program
-            , Tuple (di DNormalTokens) normalTokens
-            , Tuple (di DErrorTokens) errorTokens
-            , Tuple (di DDefaultTokens) defaultTokens
-            , Tuple (di DNormalSpecs) normalSpecs
-            , Tuple (di DNormalSpec) normalSpec
-            , Tuple (di DErrorSpecs) errorSpecs
-            , Tuple (di DErrorSpec) errorSpec
-            , Tuple (di DDefaultSpecs) defaultSpecs
-            , Tuple (di DDefaultError) defaultError
-            , Tuple (di DOptionalSync) optionalSync
-            ]
-    in fromFoldable deriveEntries
+isTerminal :: DerivationType -> Boolean
+isTerminal d = case d of 
+    DNormalHeader -> true
+    DErrorHeader -> true
+    DDefaultHeader -> true
+    DRegex -> true
+    DErrorMessage -> true
+    DTerminator -> true
+    DName -> true
+    DFAIL -> true
+    DDefault -> true
+    DEof -> true
+    _ -> false
+
+equals :: TokenType -> DerivationType -> Boolean
+equals NormalHeader DNormalHeader = true
+equals NormalHeader _ = false
+equals ErrorHeader DErrorHeader = true
+equals ErrorHeader _ = false
+equals DefaultHeader DDefaultHeader = true
+equals DefaultHeader _ = false
+equals Regex DRegex = true
+equals Regex _ = false
+equals ErrorMessage DErrorMessage = true
+equals ErrorMessage _ = false
+equals Terminator DTerminator = true
+equals Terminator _ = false
+equals Name DName = true
+equals Name _ = false
+equals Default DDefault = true
+equals Default _ = false
+equals EOF DEof = true
+equals EOF _ = false
+equals FAIL _ = false
+
+getEntry :: DerivationType -> TokenType -> TableEntry
+getEntry dType tType = 
+    let entry :: Maybe TableEntry
+        entry = do
+            dRow <- lookup (di dType) table
+            e <- lookup (ti tType) dRow :: Maybe TableEntry
+            pure e
+    in  case entry of 
+            Nothing -> STUCK
+            Just e -> e
     where 
         di = derivTypeToIndex
         ti = tokenTypeToIndex
-        program = 
-            let tokenEntries :: Array (Tuple TokenIndex TableEntry)
-                tokenEntries = [ Tuple (ti NormalHeader) entry]
-            in fromFoldable tokenEntries
-            where entry = Replace $ singleton DNormalTokens `appendArray` [ DErrorTokens, DDefaultTokens ]
-        normalTokens =
-            let tokenEntries :: Array (Tuple TokenIndex TableEntry)
-                tokenEntries = [ Tuple (ti NormalHeader ) entry ]
-            in fromFoldable tokenEntries
-            where entry = Replace $ singleton DNormalHeader `appendArray` [DNormalSpecs]
-        errorTokens = 
-            let tokenEntries :: Array (Tuple TokenIndex TableEntry)
-                tokenEntries = [ Tuple (ti EOF ) eof
-                               , Tuple (ti DefaultHeader) dh
-                               , Tuple (ti ErrorHeader) eh
-                               ]
-            in fromFoldable tokenEntries
+
+        table :: Table
+        table = 
+            let 
+                deriveEntries :: Array (Tuple DeriveIndex (Map TokenIndex TableEntry))
+                deriveEntries = 
+                    -- Only the nonterminals get entries
+                    [ Tuple (di DProgram) program
+                    , Tuple (di DNormalTokens) normalTokens
+                    , Tuple (di DErrorTokens) errorTokens
+                    , Tuple (di DDefaultTokens) defaultTokens
+                    , Tuple (di DNormalSpecs) normalSpecs
+                    , Tuple (di DNormalSpec) normalSpec
+                    , Tuple (di DErrorSpecs) errorSpecs
+                    , Tuple (di DErrorSpec) errorSpec
+                    , Tuple (di DDefaultSpecs) defaultSpecs
+                    , Tuple (di DDefaultError) defaultError
+                    , Tuple (di DOptionalSync) optionalSync
+                    ]
+            in fromFoldable deriveEntries
             where 
-                eof = Discard
-                dh = Discard
-                eh = Replace $ singleton DErrorHeader `appendArray` [DErrorSpecs]
-        defaultTokens =
-            let tokenEntries :: Array (Tuple TokenIndex TableEntry)
-                tokenEntries = [ Tuple (ti EOF) eof
-                               , Tuple (ti DefaultHeader ) dh
-                               ]
-            in fromFoldable tokenEntries
-            where 
-                eof = Discard
-                dh = Replace $ singleton DDefaultHeader `appendArray` [DDefaultSpecs]
-        normalSpecs = 
-            let tokenEntries :: Array (Tuple TokenIndex TableEntry)
-                tokenEntries =  [ Tuple (ti EOF ) eof
-                                , Tuple (ti ErrorHeader) eh
-                                , Tuple (ti Name) n
-                                ]
-            in fromFoldable tokenEntries
-            where 
-                eof = Discard
-                eh = Discard
-                n = Replace $ singleton DNormalSpec `appendArray` [DNormalSpecs]
-        normalSpec = 
-            let tokenEntries :: Array (Tuple TokenIndex TableEntry)
-                tokenEntries =  [ Tuple (ti Name ) n
-                                ]
-            in fromFoldable tokenEntries
-            where 
-                n = Replace $ singleton DName `appendArray` [ DRegex, DTerminator ]
-        errorSpecs = 
-            let tokenEntries :: Array (Tuple TokenIndex TableEntry)
-                tokenEntries =  [ Tuple (ti EOF ) eof
-                                , Tuple (ti DefaultHeader) dh
-                                , Tuple (ti Name) n
-                                ]
-            in fromFoldable tokenEntries
-            where 
-                eof = Discard
-                dh = Discard
-                n = Replace $ singleton DErrorSpec `appendArray` [DErrorSpecs]
-        errorSpec = 
-            let tokenEntries :: Array (Tuple TokenIndex TableEntry)
-                tokenEntries =  [ Tuple (ti Name ) n
-                                ]
-            in fromFoldable tokenEntries
-            where 
-                n = Replace $ singleton DName `appendArray` [ DErrorMessage, DOptionalSync, DTerminator ]
-        defaultSpecs = 
-            let tokenEntries :: Array (Tuple TokenIndex TableEntry)
-                tokenEntries =  [ Tuple (ti EOF ) eof
-                                , Tuple (ti Default ) de
-                                ]
-            in fromFoldable tokenEntries
-            where 
-                eof = Discard
-                de = Replace $ singleton DDefaultError
-        defaultError = 
-            let tokenEntries :: Array (Tuple TokenIndex TableEntry)
-                tokenEntries =  [ Tuple (ti Default ) d
-                                ]
-            in fromFoldable tokenEntries
-            where d = Replace $ singleton DDefault `appendArray` [ DErrorMessage, DOptionalSync, DTerminator ]
-        optionalSync = 
-            let tokenEntries :: Array (Tuple TokenIndex TableEntry)
-                tokenEntries =  [ Tuple (ti Terminator ) t
-                                , Tuple (ti Name ) n
-                                ]
-            in fromFoldable tokenEntries
-            where 
-                t = Discard
-                n = Replace $ singleton DName
+                program = 
+                    let tokenEntries :: Array (Tuple TokenIndex TableEntry)
+                        tokenEntries = [ Tuple (ti NormalHeader) entry]
+                    in fromFoldable tokenEntries
+                    where entry = Replace $ singleton DNormalTokens `appendArray` [ DErrorTokens, DDefaultTokens ]
+                normalTokens =
+                    let tokenEntries :: Array (Tuple TokenIndex TableEntry)
+                        tokenEntries = [ Tuple (ti NormalHeader ) entry ]
+                    in fromFoldable tokenEntries
+                    where entry = Replace $ singleton DNormalHeader `appendArray` [DNormalSpecs]
+                errorTokens = 
+                    let tokenEntries :: Array (Tuple TokenIndex TableEntry)
+                        tokenEntries = [ Tuple (ti EOF ) eof
+                                    , Tuple (ti DefaultHeader) dh
+                                    , Tuple (ti ErrorHeader) eh
+                                    ]
+                    in fromFoldable tokenEntries
+                    where 
+                        eof = Discard
+                        dh = Discard
+                        eh = Replace $ singleton DErrorHeader `appendArray` [DErrorSpecs]
+                defaultTokens =
+                    let tokenEntries :: Array (Tuple TokenIndex TableEntry)
+                        tokenEntries = [ Tuple (ti EOF) eof
+                                    , Tuple (ti DefaultHeader ) dh
+                                    ]
+                    in fromFoldable tokenEntries
+                    where 
+                        eof = Discard
+                        dh = Replace $ singleton DDefaultHeader `appendArray` [DDefaultSpecs]
+                normalSpecs = 
+                    let tokenEntries :: Array (Tuple TokenIndex TableEntry)
+                        tokenEntries =  [ Tuple (ti EOF ) eof
+                                        , Tuple (ti ErrorHeader) eh
+                                        , Tuple (ti Name) n
+                                        ]
+                    in fromFoldable tokenEntries
+                    where 
+                        eof = Discard
+                        eh = Discard
+                        n = Replace $ singleton DNormalSpec `appendArray` [DNormalSpecs]
+                normalSpec = 
+                    let tokenEntries :: Array (Tuple TokenIndex TableEntry)
+                        tokenEntries =  [ Tuple (ti Name ) n
+                                        ]
+                    in fromFoldable tokenEntries
+                    where 
+                        n = Replace $ singleton DName `appendArray` [ DRegex, DTerminator ]
+                errorSpecs = 
+                    let tokenEntries :: Array (Tuple TokenIndex TableEntry)
+                        tokenEntries =  [ Tuple (ti EOF ) eof
+                                        , Tuple (ti DefaultHeader) dh
+                                        , Tuple (ti Name) n
+                                        ]
+                    in fromFoldable tokenEntries
+                    where 
+                        eof = Discard
+                        dh = Discard
+                        n = Replace $ singleton DErrorSpec `appendArray` [DErrorSpecs]
+                errorSpec = 
+                    let tokenEntries :: Array (Tuple TokenIndex TableEntry)
+                        tokenEntries =  [ Tuple (ti Name ) n
+                                        ]
+                    in fromFoldable tokenEntries
+                    where 
+                        n = Replace $ singleton DName `appendArray` [ DErrorMessage, DOptionalSync, DTerminator ]
+                defaultSpecs = 
+                    let tokenEntries :: Array (Tuple TokenIndex TableEntry)
+                        tokenEntries =  [ Tuple (ti EOF ) eof
+                                        , Tuple (ti Default ) de
+                                        ]
+                    in fromFoldable tokenEntries
+                    where 
+                        eof = Discard
+                        de = Replace $ singleton DDefaultError
+                defaultError = 
+                    let tokenEntries :: Array (Tuple TokenIndex TableEntry)
+                        tokenEntries =  [ Tuple (ti Default ) d
+                                        ]
+                    in fromFoldable tokenEntries
+                    where d = Replace $ singleton DDefault `appendArray` [ DErrorMessage, DOptionalSync, DTerminator ]
+                optionalSync = 
+                    let tokenEntries :: Array (Tuple TokenIndex TableEntry)
+                        tokenEntries =  [ Tuple (ti Terminator ) t
+                                        , Tuple (ti Name ) n
+                                        ]
+                    in fromFoldable tokenEntries
+                    where 
+                        t = Discard
+                        n = Replace $ singleton DName
 
 type Stack = LL.List (DerivationType)
 
