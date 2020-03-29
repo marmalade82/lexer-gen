@@ -2,7 +2,9 @@ module Parser where
 
 import Prelude
 
-import Data.Array.NonEmpty (NonEmptyArray, appendArray, singleton )
+import Control.Plus (empty)
+import Data.Array as Array
+import Data.Array.NonEmpty (NonEmptyArray, appendArray, singleton)
 import Data.Either (Either(..))
 import Data.Foldable (foldl, foldr)
 import Data.Generic.Rep (class Generic)
@@ -71,6 +73,9 @@ data DerivationType
     | DFAIL
     | DDefault
     | DEof
+derive instance genericDerivType :: Generic DerivationType _
+instance showDerivationType :: Show DerivationType where show = genericShow
+instance eqDerivationType :: Eq DerivationType where eq = genericEq
 
 data TableEntry
     = STUCK
@@ -96,26 +101,23 @@ type ParseError =
 
 parse :: NonEmptyArray Token -> ParseResult
 parse arr = 
-    let initialStack :: Stack
-        initialStack = pushStack DProgram $ pushStack DEof emptyStack
-        result = 
-            { tree: Nothing
-            , success: false
-            , errors: []
-            }
+    let result :: ParseResult
+        result = doParse arr
     in result
 
 type ParseState = 
-    { stack :: Stack
+    { continue :: Boolean
+    , stack :: Stack
     , result :: ParseResult
     }
 
-doParse :: NonEmptyArray Token -> Stack -> ParseResult
-doParse ts s = 
+doParse :: NonEmptyArray Token -> ParseResult
+doParse ts = 
     let 
         initialParseState :: ParseState
         initialParseState = 
-            { stack: pushStack DProgram $ pushStack DEof emptyStack
+            { continue: true
+            , stack: pushStack DProgram $ pushStack DEof emptyStack
             , result:
                 { tree: Nothing
                 , success: false
@@ -126,47 +128,71 @@ doParse ts s =
         state :: ParseState
         state = foldl acc initialParseState ts
     in
-        { tree: Nothing
-        , success: false
-        , errors: []
-        } 
+        if sizeStack state.stack == 0
+        then state.result
+                { success = true
+                } 
+        else state.result
+                { success = false
+                , errors = Array.cons { line: -1, column: -1, message: "Stack was " <> show state.stack } state.result.errors
+                }
     where
         acc :: ParseState -> Token -> ParseState
         acc state t = 
             let next :: TokenType
                 next = t.type
 
-                nextStack :: Maybe Stack
-                nextStack = do 
-                    leftmost <- topStack state.stack :: Maybe DerivationType
-                    let stack = getNextStack leftmost next state.stack :: Either String Stack
-                    case stack of 
-                        Left _ -> Nothing
-                        Right x -> pure x
-            in  case nextStack of 
-                    Nothing -> state
-                    Just stack ->
-                        { stack: stack
-                        , result: state.result
-                        }
+                nextStack :: Either String Stack
+                nextStack = getNextStack next state.stack
+            in  if state.continue  
+                then 
+                    case nextStack of 
+                            Left err -> state
+                                { continue = false
+                                , result { errors = Array.cons (makeError t err) (state.result.errors) }
+                                }
+                            Right stack ->
+                                { continue: true
+                                , stack: stack
+                                , result: state.result
+                                }
+                else state
 
-        getNextStack :: DerivationType -> TokenType -> Stack -> Either String Stack
-        getNextStack leftmost next stack = 
-            if isTerminal leftmost
-            then if next `equals` leftmost
-                then Right $ popStack stack -- discard the leftmost symbol at the top of the stack
-                else Left $ "Terminal did not match"
-            else 
-                let entry :: TableEntry
-                    entry = getEntry leftmost next
-                in  case entry of 
-                        STUCK -> Left "Parser got suck here"
-                        Replace arr ->  -- We need to replace the top of the stack with what's in @arr
-                            Right $ foldr push (popStack stack) arr
-                        Discard -> Right $ popStack stack -- Discard tells us the leftmost went to empty string
-                where 
-                    push :: DerivationType -> Stack -> Stack
-                    push de st = pushStack de st
+        getNextStack :: TokenType -> Stack -> Either String Stack
+        getNextStack next stack = do
+            let l = topStack stack
+            case l of 
+                Nothing -> Left $ "No leftmost found on stack with terminal " <> show next
+                Just leftmost ->
+                    if isTerminal leftmost
+                    then if next `equals` leftmost
+                        then -- We're done with the current terminal, so we can return after popping the stack 
+                            Right $ popStack stack 
+                        else 
+                            Left $ "Terminal " <> show next <> " did not match " <> show leftmost
+                    else -- we need to recursively find the next stack until we are finished with this terminal.
+                        let entry :: TableEntry
+                            entry = getEntry leftmost next
+                        in  case entry of 
+                                STUCK -> -- we're done, since we got stuck
+                                    Left $ "Parser got stuck here looking at stack: " <> show stack <> " and token " <> show next
+                                Replace arr -> do  -- We need to replace the top of the stack with what's in @arr
+                                    let replaced = foldr push (popStack stack) arr :: Stack
+                                    getNextStack next replaced
+                                Discard -> do -- Discard tells us that the nonterminal went to empty string
+                                    let afterDiscard = popStack stack 
+                                    getNextStack next afterDiscard
+                        where 
+                            push :: DerivationType -> Stack -> Stack
+                            push de st = pushStack de st
+            
+
+        makeError :: Token -> String -> ParseError
+        makeError t s = 
+            { message: s
+            , line: t.line
+            , column: t.column
+            }
 
 tokenTypeToIndex :: TokenType -> Int
 tokenTypeToIndex t = 
@@ -310,12 +336,14 @@ getEntry dType tType =
                     let tokenEntries :: Array (Tuple TokenIndex TableEntry)
                         tokenEntries =  [ Tuple (ti EOF ) eof
                                         , Tuple (ti ErrorHeader) eh
+                                        , Tuple (ti DefaultHeader ) dh
                                         , Tuple (ti Name) n
                                         ]
                     in fromFoldable tokenEntries
                     where 
                         eof = Discard
                         eh = Discard
+                        dh = Discard
                         n = Replace $ singleton DNormalSpec `appendArray` [DNormalSpecs]
                 normalSpec = 
                     let tokenEntries :: Array (Tuple TokenIndex TableEntry)

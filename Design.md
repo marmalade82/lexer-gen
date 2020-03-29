@@ -88,6 +88,7 @@ Program                 ->              NormalTokens ErrorTokens DefaultTokens
     F(Program) subset F(ErrorTokens)
     F(Program) subset F(NormalTokens)
     FirstE(ErrorTokens) subset F(NormalTokens)
+    FirstE(DefaultTokens) subset F(NormalTokens)    // because ErrorTokens can disappear
     FirstE(DefaultTokens) subset F(ErrorTokens)
 NormalTokens            ->              "%%_normal_%%" NormalSpecs
     F(NormalTokens) subset F(NormalSpecs)
@@ -150,9 +151,10 @@ F(ErrorTokens) contains FirstE(DefaultTokens)               = { dh }
                         F(Program)             union { $ }  = { dh, $ }
 F(NormalSpec) contains F(NormalSpecs),                      = { eh, $ }
                         FirstE(NormalSpecs)    union { n }  = { eh, $, n }             
-F(NormalSpecs) contains F(NormalTokens)                     = { eh, $ }
+F(NormalSpecs) contains F(NormalTokens)                     = { eh, dh, $ }
 F(NormalTokens) contains FirstE(ErrorTokens)                = { eh }
-                         F(Program)            union { $ }  = { eh, $ }
+                         FirstE(DefaultTokens) union { dh } = { eh, dh }
+                         F(Program)            union { $ }  = { eh, dh, $ }
 ```
 
 
@@ -164,7 +166,7 @@ F(NormalTokens) contains FirstE(ErrorTokens)                = { eh }
 | NormalTokens      |                   |                           |            |                           |                  |               | nh NormalSpecs
 | ErrorTokens       | ""                |                           |            |                           |  ""              | eh ErrorSpecs |
 | DefaultTokens     | ""                |                           |            |                           | dh DefaultSpecs  |
-| NormalSpecs       | ""                | NormalSpec, NormalSpecs   |            |                           |                  |  ""
+| NormalSpecs       | ""                | NormalSpec, NormalSpecs   |            |                           |  ""              |  ""
 | NormalSpec        |                   | n, r, ";"                 |
 | ErrorSpecs        | ""                | ErrorSpec, ErrorSpecs     |            |                           |  ""
 | ErrorSpec         |                   | n,em,OptionalSync,";"     |
