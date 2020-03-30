@@ -2,7 +2,6 @@ module Parser where
 
 import Prelude
 
-import Control.Plus (empty)
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray, appendArray, singleton)
 import Data.Either (Either(..))
@@ -159,31 +158,36 @@ doParse ts =
                 else state
 
         processToken :: TokenType -> Stack -> Either String Stack
-        processToken next stack = 
+        processToken current stack = 
+            -- To build the tree, we need a Builder module with AST awareness that receives
+            -- tokens and non-terminals from the LL1 parsing process and throws them on the stack.
+            -- Since LL1 effectively amounts to a depth-first, left-first building of the derivation tree,
+            -- using a separate stack here will allow us to combine the top of the stack with what's right underneath it
+            -- with some context-aware code that will put the tree together in the right order.
             let result :: Either String Stack
                 result = do
                     let l = topStack stack
                     case l of 
-                        Nothing -> Left $ "No leftmost found on stack with terminal " <> show next
+                        Nothing -> Left $ "No leftmost found on stack with terminal " <> show current
                         Just leftmost ->
                             if isTerminal leftmost
-                            then if next `equals` leftmost
+                            then if current `equals` leftmost
                                 then -- We're done with the current terminal, so we can return after popping the stack 
                                     Right $ popStack stack 
                                 else 
-                                    Left $ "Terminal " <> show next <> " did not match " <> show leftmost
+                                    Left $ "Terminal " <> show current <> " did not match " <> show leftmost
                             else -- we need to recursively find the next stack until we are finished with this terminal.
                                 let entry :: TableEntry
-                                    entry = getEntry leftmost next
+                                    entry = getEntry leftmost current
                                 in  case entry of 
                                         STUCK -> -- we're done, since we got stuck
-                                            Left $ "Parser got stuck here looking at stack: " <> show stack <> " and token " <> show next
+                                            Left $ "Parser got stuck here looking at stack: " <> show stack <> " and token " <> show current
                                         Replace arr -> do  -- We need to replace the top of the stack with what's in @arr
-                                            let replaced = foldr push (popStack stack) arr :: Stack
-                                            processToken next replaced
+                                            let withReplaced = foldr push (popStack stack) arr :: Stack
+                                            processToken current withReplaced
                                         Discard -> do -- Discard tells us that the nonterminal went to empty string
                                             let afterDiscard = popStack stack 
-                                            processToken next afterDiscard
+                                            processToken current afterDiscard
                                 where 
                                     push :: DerivationType -> Stack -> Stack
                                     push de st = pushStack de st
