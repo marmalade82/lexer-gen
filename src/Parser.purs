@@ -143,7 +143,7 @@ doParse ts =
                 next = t.type
 
                 nextStack :: Either String Stack
-                nextStack = getNextStack next state.stack
+                nextStack = processToken next state.stack
             in  if state.continue  
                 then 
                     case nextStack of 
@@ -158,33 +158,36 @@ doParse ts =
                                 }
                 else state
 
-        getNextStack :: TokenType -> Stack -> Either String Stack
-        getNextStack next stack = do
-            let l = topStack stack
-            case l of 
-                Nothing -> Left $ "No leftmost found on stack with terminal " <> show next
-                Just leftmost ->
-                    if isTerminal leftmost
-                    then if next `equals` leftmost
-                        then -- We're done with the current terminal, so we can return after popping the stack 
-                            Right $ popStack stack 
-                        else 
-                            Left $ "Terminal " <> show next <> " did not match " <> show leftmost
-                    else -- we need to recursively find the next stack until we are finished with this terminal.
-                        let entry :: TableEntry
-                            entry = getEntry leftmost next
-                        in  case entry of 
-                                STUCK -> -- we're done, since we got stuck
-                                    Left $ "Parser got stuck here looking at stack: " <> show stack <> " and token " <> show next
-                                Replace arr -> do  -- We need to replace the top of the stack with what's in @arr
-                                    let replaced = foldr push (popStack stack) arr :: Stack
-                                    getNextStack next replaced
-                                Discard -> do -- Discard tells us that the nonterminal went to empty string
-                                    let afterDiscard = popStack stack 
-                                    getNextStack next afterDiscard
-                        where 
-                            push :: DerivationType -> Stack -> Stack
-                            push de st = pushStack de st
+        processToken :: TokenType -> Stack -> Either String Stack
+        processToken next stack = 
+            let result :: Either String Stack
+                result = do
+                    let l = topStack stack
+                    case l of 
+                        Nothing -> Left $ "No leftmost found on stack with terminal " <> show next
+                        Just leftmost ->
+                            if isTerminal leftmost
+                            then if next `equals` leftmost
+                                then -- We're done with the current terminal, so we can return after popping the stack 
+                                    Right $ popStack stack 
+                                else 
+                                    Left $ "Terminal " <> show next <> " did not match " <> show leftmost
+                            else -- we need to recursively find the next stack until we are finished with this terminal.
+                                let entry :: TableEntry
+                                    entry = getEntry leftmost next
+                                in  case entry of 
+                                        STUCK -> -- we're done, since we got stuck
+                                            Left $ "Parser got stuck here looking at stack: " <> show stack <> " and token " <> show next
+                                        Replace arr -> do  -- We need to replace the top of the stack with what's in @arr
+                                            let replaced = foldr push (popStack stack) arr :: Stack
+                                            processToken next replaced
+                                        Discard -> do -- Discard tells us that the nonterminal went to empty string
+                                            let afterDiscard = popStack stack 
+                                            processToken next afterDiscard
+                                where 
+                                    push :: DerivationType -> Stack -> Stack
+                                    push de st = pushStack de st
+            in  result
             
 
         makeError :: Token -> String -> ParseError
