@@ -3,8 +3,11 @@ module Test.ParserSpec where
 
 import Prelude
 
+import Data.Array as Array
 import Data.Array.NonEmpty (appendArray, singleton)
-import Parser (Token, TokenType(..), parse, AST, ParseResult)
+import Data.Maybe (Maybe(..))
+import Data.String as Str
+import Parser (AST(..), ParseResult, Token, TokenType(..), parse)
 import Test.Spec (Spec, describe, it, pending)
 import Test.Spec.Assertions (shouldEqual)
 
@@ -20,7 +23,7 @@ spec = describe "Parsing" do
 headerSpec :: Spec Unit
 headerSpec = describe "Headers" do 
     parseSpec
-    --astSpec
+    astSpec
 
     where 
         astSpec :: Spec Unit
@@ -160,7 +163,7 @@ errorSectionSpec = describe "Error section" do
                             , Name, ErrorMessage, Terminator, EOF
                             ]
                 let result = asTestString $ parse tokens
-                result `shouldEqual` "p,nh-eh,n-em-n!n-em"
+                result `shouldEqual` "p,nh-eh,es,n-em-n!es,n-em"
 
 defaultSectionSpec :: Spec Unit
 defaultSectionSpec = describe "Default section" do 
@@ -223,7 +226,46 @@ makeBasicToken t =
     }
 
 asTestString :: ParseResult -> String
-asTestString ast = ""
+asTestString result = case result.tree of 
+    Nothing -> ""
+    Just ast -> doString ast
+    where doString :: AST -> String
+          doString ast = case ast of 
+                NProgram n d e -> 
+                    let nString :: String
+                        nString = doString n
+
+                        dString :: String
+                        dString = maybeDoString d
+
+                        eString :: String
+                        eString = maybeDoString e
+                    in "p," <> (joinNonEmpty [nString, dString, eString] "-")
+                NNormalSpecs arr -> 
+                    let children :: Array String
+                        children = doString <$> arr
+                    in "nh," <> (joinNonEmpty children "-")
+                NErrorSpecs arr ->
+                    let children :: Array String
+                        children = doString <$> arr
+                    in "eh," <> (joinNonEmpty children "-")
+                NDefaultSpecs arr ->
+                    let children :: Array String
+                        children = doString <$> arr
+                    in "dh," <> (joinNonEmpty children "-")
+                _ -> ""
+
+          maybeDoString :: Maybe AST -> String
+          maybeDoString m = case m of 
+            Nothing -> ""
+            Just ast -> doString ast
+
+          joinNonEmpty :: Array String -> String -> String
+          joinNonEmpty arr sep = 
+                    let withoutNonEmpty :: Array String
+                        withoutNonEmpty = Array.filter ( ( _ > 0) <<< Str.length) arr
+                    in  Str.joinWith "-" withoutNonEmpty
+
 
 asSuccess :: ParseResult -> Boolean
 asSuccess res = res.success
