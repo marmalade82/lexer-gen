@@ -42,6 +42,12 @@ headerSpec = describe "Headers" do
                             [ DefaultHeader, EOF ]
                 let result = asTestString $ parse tokens
                 result `shouldEqual` "p,nh-eh"
+            it "All headers" do 
+                let tokens = makeBasicToken <$>
+                        singleton NormalHeader `appendArray`
+                            [ ErrorHeader, DefaultHeader, EOF ]
+                let result = asTestString $ parse tokens
+                result `shouldEqual` "p,nh-eh-dh"
         parseSpec :: Spec Unit
         parseSpec = describe "parses" do
             it "Normal header" do 
@@ -64,6 +70,14 @@ headerSpec = describe "Headers" do
                 let result = parse tokens
                 asErrors result `shouldEqual` []
                 asSuccess result `shouldEqual` true
+            it "All headers" do 
+                let tokens = makeBasicToken <$>
+                        singleton NormalHeader `appendArray`
+                            [ ErrorHeader, DefaultHeader, EOF ]
+                let result = parse tokens
+                asErrors result `shouldEqual` []
+                asSuccess result `shouldEqual` true
+
 
 
 normalSectionSpec :: Spec Unit
