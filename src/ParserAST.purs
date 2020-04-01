@@ -5,6 +5,9 @@ import Prelude
 import Data.CatQueue (CatQueue)
 import Data.CatQueue as Q
 import Data.Either (Either(..))
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Eq (genericEq)
+import Data.Generic.Rep.Show (genericShow)
 import Data.List.Lazy (List, cons, tail, head, length, nil)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..), fst)
@@ -17,10 +20,32 @@ import ParserTypes (AST(..), DerivationType(..), Token, TokenType(..), equals)
 -- which we can then throw into a queue.
 -- If the stack is popped and the next thing on the top is a nonterminal,
 -- then we can consider building an ast with that nonterminal and the ASTs in the queue
+
+emptyBuildState :: BuildState
+emptyBuildState =
+    { stack: emptyStack
+    , queue: emptyQueue
+    } 
+
+
 type BuildState = 
     { stack :: Stack
     , queue :: Queue
     }
+
+
+extract :: BuildState -> Either String AST
+extract state@{stack: s, queue: q} = 
+    if sizeStack s /= 0
+    then Left $ "Stack was not empty: " <> show s
+    else 
+        if sizeQueue q > 1
+        then Left $ "Queue did not contain single AST: " <> show q
+        else case frontQueue q of 
+            Nothing -> Left $ "Queue was empty, no AST found"
+            Just (Fragment ast) -> Right ast
+
+
 
 build :: Either Token DerivationType -> BuildState -> Either String BuildState
 build next state@{stack: s, queue: q} = 
@@ -36,12 +61,6 @@ build next state@{stack: s, queue: q} =
                         doBuildAst (Just token) processInput
         in  buildAst
         where
-            makeAst :: Token -> Maybe AST
-            makeAst tok = case tok.type of
-                Regex -> Just $ NRegex tok
-                Name -> Just $ NName tok
-                ErrorMessage -> Just $ NErrorMessage tok
-                _ -> Nothing
             doBuildAst :: Maybe Token -> BuildState -> Either String BuildState
             doBuildAst tok _state@{stack: _s, queue: _q} = -- we only build if we actually received a token
                 case tok of 
@@ -79,9 +98,17 @@ build next state@{stack: s, queue: q} =
                         else case makeAst t of 
                                 Nothing -> Left $ "Unusable token when building AST: " <> show t
                                 Just ast -> Right ast
+                    makeAst :: Token -> Maybe AST
+                    makeAst _tok = case _tok.type of
+                        Regex -> Just $ NRegex _tok
+                        Name -> Just $ NName _tok
+                        ErrorMessage -> Just $ NErrorMessage _tok
+                        _ -> Nothing
 
 data StackElement
     = Pending DerivationType
+derive instance genericStackElement :: Generic StackElement _
+instance showStackElement :: Show StackElement where show = genericShow
 
 type Stack = List StackElement
 
@@ -104,6 +131,8 @@ emptyStack = nil
 
 data QueueElement
     = Fragment AST
+derive instance genericQueueElement :: Generic QueueElement _
+instance showQueueElement :: Show QueueElement where show = genericShow  
 
 
 type Queue = CatQueue QueueElement

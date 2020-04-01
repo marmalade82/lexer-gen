@@ -20,6 +20,7 @@ import Data.List.Lazy as LL
 import Data.Map (Map, fromFoldable, lookup)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
+import ParserAST (BuildState, build, emptyBuildState)
 import ParserTypes (AST(..), DerivationType(..), TokenType(..), Token, equals)
 
 
@@ -54,6 +55,7 @@ parse arr =
 type ParseState = 
     { continue :: Boolean
     , stack :: Stack
+    , astBuildState :: BuildState
     , result :: ParseResult
     }
 
@@ -64,6 +66,7 @@ doParse ts =
         initialParseState = 
             { continue: true
             , stack: pushStack DProgram $ pushStack DEof emptyStack
+            , astBuildState: emptyBuildState
             , result:
                 { tree: Nothing
                 , success: false
@@ -85,42 +88,48 @@ doParse ts =
     where
         acc :: ParseState -> Token -> ParseState
         acc state t = 
-            let next :: TokenType
-                next = t.type
+            let next :: Token
+                next = t
 
-                nextStack :: Either String Stack
-                nextStack = processToken next state.stack
+                nextState :: Either String ParseState
+                nextState = processToken next state
             in  if state.continue  
                 then 
-                    case nextStack of 
+                    case nextState of 
                             Left err -> state
                                 { continue = false
                                 , result { errors = Array.cons (makeError t err) (state.result.errors) }
                                 }
-                            Right stack ->
-                                { continue: true
-                                , stack: stack
-                                , result: state.result
+                            Right _state -> _state
+                                { continue = true
                                 }
                 else state
 
-        processToken :: TokenType -> Stack -> Either String Stack
-        processToken current stack = 
+        processToken :: Token -> ParseState -> Either String ParseState
+        processToken token state = 
             -- To build the tree, we need a Builder module with AST awareness that receives
             -- tokens and non-terminals from the LL1 parsing process and throws them on the stack.
             -- Since LL1 effectively amounts to a depth-first, left-first building of the derivation tree,
             -- using a separate stack here will allow us to combine the top of the stack with what's right underneath it
             -- with some context-aware code that will put the tree together in the right order.
-            let result :: Either String Stack
+            let stack :: Stack
+                stack = state.stack
+
+                current :: TokenType
+                current = token.type
+
+                result :: Either String ParseState
                 result = do
                     let l = topStack stack
                     case l of 
-                        Nothing -> Left $ "No leftmost found on stack with terminal " <> show current
-                        Just leftmost ->
+                        Nothing -> Left $ "No leftmost found on stack on terminal " <> show current
+                        Just leftmost -> do
                             if isTerminal leftmost
                             then if current `equals` leftmost
-                                then -- We're done with the current terminal, so we can return after popping the stack 
-                                    Right $ popStack stack 
+                                then do -- We're done with the current token and leftmost symbol. It's time to use it to build
+                                    withDeriv <- build (Right leftmost) state.astBuildState 
+                                    newBuildState <- build (Left token) withDeriv
+                                    pure $ state { stack = popStack stack, astBuildState = newBuildState }
                                 else 
                                     Left $ "Terminal " <> show current <> " did not match " <> show leftmost
                             else -- we need to recursively find the next stack until we are finished with this terminal.
@@ -129,12 +138,17 @@ doParse ts =
                                 in  case entry of 
                                         STUCK -> -- we're done, since we got stuck
                                             Left $ "Parser got stuck here looking at stack: " <> show stack <> " and token " <> show current
-                                        Replace arr -> do  -- We need to replace the top of the stack with what's in @arr
+                                        Replace arr -> do   -- We need to replace the top of the stack with what's in @arr
+                                                            -- We need to push the consumed nonterminal to the AST builder
+                                            newBuildState <- build (Right leftmost) state.astBuildState
                                             let withReplaced = foldr push (popStack stack) arr :: Stack
-                                            processToken current withReplaced
-                                        Discard -> do -- Discard tells us that the nonterminal went to empty string
-                                            let afterDiscard = popStack stack 
-                                            processToken current afterDiscard
+                                            let newState = state { stack = withReplaced, astBuildState = newBuildState } :: ParseState
+                                            processToken token newState
+                                        Discard -> do   -- Discard tells us that the nonterminal went to empty string,
+                                                        -- so there's no need to send it to the AST builder
+                                            let afterDiscard = popStack stack  :: Stack
+                                            let newState = state { stack = afterDiscard } :: ParseState
+                                            processToken token newState
                                 where 
                                     push :: DerivationType -> Stack -> Stack
                                     push de st = pushStack de st

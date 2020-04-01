@@ -3,14 +3,9 @@ module Test.ParserSpec where
 
 import Prelude
 
-import Data.Array as Array
 import Data.Array.NonEmpty (appendArray, singleton)
-import Data.Int (round, toNumber)
 import Data.Maybe (Maybe(..))
-import Data.String as Str
-import Data.Traversable (foldr, foldl)
-import Math (max)
-import Parser (AST(..), ParseResult, Token, TokenType(..), parse)
+import Parser (ParseResult, Token, TokenType(..), parse)
 import Test.Spec (Spec, describe, it, pending)
 import Test.Spec.Assertions (shouldEqual)
 
@@ -236,97 +231,7 @@ type TestStringResult =
 asTestString :: ParseResult -> String
 asTestString result = case result.tree of 
     Nothing -> ""
-    Just ast -> (doString ast 0).str
-    where doString :: AST -> Int -> TestStringResult
-          doString ast depth = case ast of 
-                NProgram n e d -> 
-                    let nString :: TestStringResult
-                        nString = doString n depth
-
-                        eString :: TestStringResult
-                        eString = maybeDoString e depth
-
-                        dString :: TestStringResult
-                        dString = maybeDoString d depth
-
-                        children :: Array TestStringResult
-                        children = [nString, eString, dString]
-
-                        str = "p," <> (joinNonEmpty children)
-                        de = (resultDepth children)
-                    in  makeResult str de
-                    
-                NNormalSpecs arr -> 
-                    let children :: Array TestStringResult
-                        children = (flip doString $ depth) <$> arr
-
-                        str = "nh," <> (joinNonEmpty children)
-                        de = (resultDepth children)
-                    in  makeResult str de
-                NErrorSpecs arr ->
-                    let children :: Array TestStringResult
-                        children = (flip doString $ depth) <$> arr
-                        
-                        str = "eh," <> (joinNonEmpty children)
-                        de = (resultDepth children)
-                    in makeResult str de
-                NDefaultSpecs arr ->
-                    let children :: Array TestStringResult
-                        children = (flip doString $ depth) <$> arr
-
-                        str = "dh," <> (joinNonEmpty children)
-                        de = (resultDepth children)
-                    in makeResult str de
-                _ -> makeResult "" 0
-                where 
-                    resultDepth :: Array TestStringResult -> Int
-                    resultDepth children = -- we add 1, for the current level, to the depth of the child levels
-                        maxDepth children + 1
-
-                    makeResult :: String -> Int -> TestStringResult
-                    makeResult s dep = 
-                                { str : s
-                                , depth: chooseLarger 0 dep
-                                }
-
-          maybeDoString :: Maybe AST -> Int -> TestStringResult
-          maybeDoString m depth = case m of 
-            Nothing ->  { str: ""
-                        , depth: 0
-                        }
-            Just ast -> doString ast depth
-
-          joinNonEmpty :: Array TestStringResult -> String
-          joinNonEmpty arr = 
-                    let withoutEmpty :: Array TestStringResult
-                        withoutEmpty = Array.filter nonEmpty arr
-                        
-                        joined :: String
-                        joined = foldl join "" withoutEmpty
-                    in  joined
-                    where 
-                        nonEmpty :: TestStringResult -> Boolean
-                        nonEmpty r = (Str.length r.str) > 0
-
-                        join :: String -> TestStringResult -> String
-                        join acc res = 
-                            if Str.null acc 
-                            then res.str
-                            else 
-                                let sep =   if res.depth < 2
-                                            then "-"
-                                            else "!"
-                                in  acc <> sep <> res.str
-          maxDepth :: Array TestStringResult -> Int
-          maxDepth arr = 
-                    let depths :: Array Int
-                        depths = (\x -> x.depth) <$> arr
-
-                        maximum :: Int
-                        maximum = foldr chooseLarger 0 depths
-                    in maximum
-          chooseLarger :: Int -> Int -> Int
-          chooseLarger l r = round $ max (toNumber l) (toNumber r)
+    Just ast -> show ast
 
 
 asSuccess :: ParseResult -> Boolean
