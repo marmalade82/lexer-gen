@@ -4,6 +4,7 @@ module ParserTypes
     , Token
     , AST(..)
     , DerivationType(..)
+    , equals
     ) where
 import Prelude
 import Data.Generic.Rep (class Generic)
@@ -72,3 +73,24 @@ data DerivationType
 derive instance genericDerivType :: Generic DerivationType _
 instance showDerivationType :: Show DerivationType where show = genericShow
 instance eqDerivationType :: Eq DerivationType where eq = genericEq
+
+equals :: TokenType -> DerivationType -> Boolean
+equals NormalHeader DNormalHeader = true
+equals NormalHeader _ = false
+equals ErrorHeader DErrorHeader = true
+equals ErrorHeader _ = false
+equals DefaultHeader DDefaultHeader = true
+equals DefaultHeader _ = false
+equals Regex DRegex = true
+equals Regex _ = false
+equals ErrorMessage DErrorMessage = true
+equals ErrorMessage _ = false
+equals Terminator DTerminator = true
+equals Terminator _ = false
+equals Name DName = true
+equals Name _ = false
+equals Default DDefault = true
+equals Default _ = false
+equals EOF DEof = true
+equals EOF _ = false
+equals FAIL _ = false

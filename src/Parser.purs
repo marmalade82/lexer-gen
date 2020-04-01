@@ -20,7 +20,7 @@ import Data.List.Lazy as LL
 import Data.Map (Map, fromFoldable, lookup)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
-import ParserTypes (AST(..), DerivationType(..), TokenType(..), Token)
+import ParserTypes (AST(..), DerivationType(..), TokenType(..), Token, equals)
 
 
 data TableEntry
@@ -201,26 +201,6 @@ isTerminal d = case d of
     DEof -> true
     _ -> false
 
-equals :: TokenType -> DerivationType -> Boolean
-equals NormalHeader DNormalHeader = true
-equals NormalHeader _ = false
-equals ErrorHeader DErrorHeader = true
-equals ErrorHeader _ = false
-equals DefaultHeader DDefaultHeader = true
-equals DefaultHeader _ = false
-equals Regex DRegex = true
-equals Regex _ = false
-equals ErrorMessage DErrorMessage = true
-equals ErrorMessage _ = false
-equals Terminator DTerminator = true
-equals Terminator _ = false
-equals Name DName = true
-equals Name _ = false
-equals Default DDefault = true
-equals Default _ = false
-equals EOF DEof = true
-equals EOF _ = false
-equals FAIL _ = false
 
 getEntry :: DerivationType -> TokenType -> TableEntry
 getEntry dType tType = 
