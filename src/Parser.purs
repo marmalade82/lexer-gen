@@ -20,7 +20,7 @@ import Data.List.Lazy as LL
 import Data.Map (Map, fromFoldable, lookup)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
-import ParserAST (BuildState, build, emptyBuildState)
+import ParserAST (BuildState, build, emptyBuildState, extract)
 import ParserTypes (AST(..), DerivationType(..), TokenType(..), Token, equals)
 
 
@@ -76,14 +76,27 @@ doParse ts =
 
         state :: ParseState
         state = foldl acc initialParseState ts
+
+        buildResults :: Either String AST
+        buildResults = extract state.astBuildState
     in
         if sizeStack state.stack == 0
-        then state.result
-                { success = true
-                } 
+        then case buildResults of 
+                Left err -> state.result
+                    { success = true
+                    , errors = Array.cons 
+                                    { line: -1, column: -1
+                                    , message: "Stack was " <> show state.stack <> " when build failed: " <> err
+                                    } state.result.errors
+                    }
+                Right ast -> state.result 
+                    { success = true
+                    , tree = Just $ ast
+                    }
         else state.result
                 { success = false
-                , errors = Array.cons { line: -1, column: -1, message: "Stack was " <> show state.stack } state.result.errors
+                , errors = Array.cons { line: -1, column: -1, 
+                                        message: "Stack was " <> show state.stack } state.result.errors
                 }
     where
         acc :: ParseState -> Token -> ParseState
