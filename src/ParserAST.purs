@@ -129,17 +129,17 @@ nonterminalBuild state =
     where
         doBuild :: BuildState -> Either String BuildState
         doBuild st@{stack: _s, queue: _q} = case topStack _s of 
-                    Nothing -> Right st
-                    -- We keep building until we find a nonterminal that cannot yet match
-                    Just (Pending nonterm) -> 
-                        let popped = popStack _s
-                        in  case nonterm of
-                                DProgram -> case buildProgram _q of 
-                                    Just newQueue -> Right $ st { stack = popped, queue = newQueue }
-                                    Nothing -> Right $ st -- even if we can't convert the program at this time, that's okay.
-                                DNormalTokens -> doBuild st { stack = popped, queue = buildNormalTokens _q }
-                                DErrorTokens -> doBuild st { stack = popped, queue = buildErrorTokens _q}
-                                _ -> Left $ "Tried to build a nonterminal AST using " <> show nonterm
+            Nothing -> Right st
+            -- We keep building until we find a nonterminal that cannot yet match
+            Just (Pending nonterm) -> 
+                let popped = popStack _s
+                in  case nonterm of
+                        DProgram -> case buildProgram _q of 
+                            Just newQueue -> Right $ st { stack = popped, queue = newQueue }
+                            Nothing -> Right $ st -- even if we can't convert the program at this time, that's okay.
+                        DNormalTokens -> doBuild st { stack = popped, queue = buildNormalTokens _q }
+                        DErrorTokens -> doBuild st { stack = popped, queue = buildErrorTokens _q}
+                        _ -> Left $ "Tried to build a nonterminal AST using " <> show nonterm
         buildProgram :: Queue -> Maybe Queue
         buildProgram q = 
             let _prog :: Maybe (Tuple AST Queue)
