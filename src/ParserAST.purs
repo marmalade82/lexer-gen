@@ -2,17 +2,19 @@ module ParserAST where
 
 import Prelude
 
-import Data.Array ((:))
+import Data.Array ((:), snoc)
 import Data.CatQueue (CatQueue)
 import Data.CatQueue as Q
 import Data.Either (Either(..))
+import Data.Enum (class Enum, succ)
 import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Enum (genericPred, genericSucc)
 import Data.Generic.Rep.Eq (genericEq)
+import Data.Generic.Rep.Ord (genericCompare)
 import Data.Generic.Rep.Show (genericShow)
 import Data.List.Lazy (List, cons, tail, head, length, nil)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..), fst, snd)
-import Node.Stream (onFinish)
 import ParserTypes (AST(..), DerivationType(..), Token, TokenType(..), equals)
 
 -- We let the LL1 parsing take care of correctness for us
@@ -256,3 +258,310 @@ sizeQueue = Q.length
 
 emptyQueue :: Queue
 emptyQueue = Q.empty
+
+
+
+-- definition of data structures for tree building
+-- we'll create a stack of the ast so far and lenses to which portion is currently under construction,
+-- based on what the LL1 parsing passes.
+-- When a derivative type is passed, the parser will evaluate it to determine whether it leads to an AST node being constructed.
+-- If it doesn't, we'll just toss it.
+-- If it does, we'll throw it on the stack along with the leftmost lens
+-- As we receive tokens that match the top of the stack, obviously we'll update the top of the stack,
+-- and then pop the stack to match the token into its parent node
+-- If the parent node is full, then we can pop the parent node and match it into its parent.
+-- If the parent node ISN'T full, then if we receive a request to merge something that is to the LEFT of the current 
+-- lens, or if we receive a request to merge something that is NOT part of the node, then we try to merge the parent node to
+-- its parent.
+-- On the other hand, if a parent receives something that matches to the RIGHT of the leftmost lens, then we can move the leftmost lens
+-- rightward, merge the input, and then move right again.
+-- in that case, maybe DISCARD is a message to move to the right OR to pop the stack and try to merge.
+
+type Program = 
+    { normal :: Maybe NormalSpecs
+    , error :: Maybe ErrorSpecs
+    , default :: Maybe DefaultSpecs
+    }
+
+data ProgramLens 
+    = NormalSpecs_ 
+    | ErrorSpecs_ 
+    | DefaultSpecs_ 
+    | Done_
+derive instance genProgramLens :: Generic ProgramLens _
+instance eqProgramLens :: Eq ProgramLens where eq = genericEq
+instance ordProgramLens :: Ord ProgramLens where compare = genericCompare
+instance enumProgramLens :: Enum ProgramLens where 
+    succ = genericSucc
+    pred = genericPred
+
+type NormalSpecs = 
+    { specs :: Array NormalSpec
+    }
+data NormalSpecsLens 
+    = ArrayNormalSpecs 
+derive instance genNormalSpecsLens :: Generic NormalSpecsLens _
+instance eqNormalSpecsLens :: Eq NormalSpecsLens where eq = genericEq
+instance ordNormalSpecsLens :: Ord NormalSpecsLens where compare = genericCompare
+instance enumNormalSpecsLens :: Enum NormalSpecsLens where 
+    succ = genericSucc
+    pred = genericPred
+
+type NormalSpec = 
+    { name :: Maybe Name
+    , regex :: Maybe Regex
+    }
+data NormalSpecLens 
+    = NormalName 
+    | NormalRegex 
+derive instance genNormalSpecLens :: Generic NormalSpecLens _
+instance eqNormalSpecLens :: Eq NormalSpecLens where eq = genericEq
+instance ordNormalSpecLens :: Ord NormalSpecLens where compare = genericCompare
+instance enumNormalSpecLens :: Enum NormalSpecLens where 
+    succ = genericSucc
+    pred = genericPred
+
+type ErrorSpecs = 
+    { specs :: Array ErrorSpec
+    }
+data ErrorSpecsLens
+    = ArrayErrorSpecs 
+derive instance genErrorSpecsLens :: Generic ErrorSpecsLens _
+instance eqErrorSpecsLens :: Eq ErrorSpecsLens where eq = genericEq
+instance ordErrorSpecsLens :: Ord ErrorSpecsLens where compare = genericCompare
+instance enumErrorSpecsLens :: Enum ErrorSpecsLens where 
+    succ = genericSucc
+    pred = genericPred
+
+type ErrorSpec = 
+    { name :: Maybe Name
+    , error :: Maybe ErrorMessage
+    , sync :: Maybe Regex
+    }
+
+data ErrorSpecLens
+    = ErrorName 
+    | ErrorEM 
+    | ErrorSync 
+derive instance genErrorSpecLens :: Generic ErrorSpecLens _
+instance eqErrorSpecLens :: Eq ErrorSpecLens where eq = genericEq
+instance ordErrorSpecLens :: Ord ErrorSpecLens where compare = genericCompare
+instance enumErrorSpecLens :: Enum ErrorSpecLens where 
+    succ = genericSucc
+    pred = genericPred
+
+type DefaultSpecs = 
+    { specs :: Array DefaultSpec
+    }
+data DefaultSpecsLens 
+    = ArrayDefaultSpecs 
+derive instance genDefaultSpecsLens :: Generic DefaultSpecsLens _
+instance eqDefaultSpecsLens :: Eq DefaultSpecsLens where eq = genericEq
+instance ordDefaultSpecsLens :: Ord DefaultSpecsLens where compare = genericCompare
+instance enumDefaultSpecsLens :: Enum DefaultSpecsLens where 
+    succ = genericSucc
+    pred = genericPred
+
+type DefaultSpec =
+    { error :: Maybe ErrorMessage
+    , sync :: Maybe Regex
+    }
+data DefaultSpecLens 
+    = DefaultMessage 
+    | DefaultSync 
+derive instance genDefaultSpecLens :: Generic DefaultSpecLens _
+instance eqDefaultSpecLens :: Eq DefaultSpecLens where eq = genericEq
+instance ordDefaultSpecLens :: Ord DefaultSpecLens where compare = genericCompare
+instance enumDefaultSpecLens :: Enum DefaultSpecLens where 
+    succ = genericSucc
+    pred = genericPred
+
+type Name =
+    { token :: Maybe Token
+    }
+data NameLens
+    = Name_ 
+derive instance genNameLens :: Generic NameLens _
+instance eqNameLens :: Eq NameLens where eq = genericEq
+instance ordNameLens :: Ord NameLens where compare = genericCompare
+instance enumNameLens :: Enum NameLens where 
+    succ = genericSucc
+    pred = genericPred
+
+type Regex = 
+    { token :: Maybe Token
+    }
+data RegexLens
+    = Regex_ 
+derive instance genRegexLens :: Generic RegexLens _
+instance eqRegexLens :: Eq RegexLens where eq = genericEq
+instance ordRegexLens :: Ord RegexLens where compare = genericCompare
+instance enumRegexLens :: Enum RegexLens where 
+    succ = genericSucc
+    pred = genericPred
+
+type ErrorMessage =
+    { token :: Maybe Token
+    }
+data ErrorMessageLens
+    = ErrorMessage_ 
+derive instance genErrorMessageLens :: Generic ErrorMessageLens _
+instance eqErrorMessageLens :: Eq ErrorMessageLens where eq = genericEq
+instance ordErrorMessageLens :: Ord ErrorMessageLens where compare = genericCompare
+instance enumErrorMessageLens :: Enum ErrorMessageLens where 
+    succ = genericSucc
+    pred = genericPred
+
+data AstStackElement
+    = P Program ProgramLens
+    | NSS NormalSpecs NormalSpecsLens
+    | NS NormalSpec NormalSpecLens
+    | ESS ErrorSpecs ErrorSpecsLens
+    | ES ErrorSpec ErrorSpecLens
+    | DSS DefaultSpecs DefaultSpecsLens
+    | DS DefaultSpec DefaultSpecLens
+    | N Name NameLens
+    | R Regex RegexLens
+    | EM ErrorMessage ErrorMessageLens
+
+type AstStack = List AstStackElement
+
+pushAstStack :: AstStackElement -> AstStack -> AstStack
+pushAstStack = cons
+
+popAstStack :: AstStack -> AstStack
+popAstStack s = case tail s of 
+    Nothing -> s
+    Just rest -> rest
+
+topAstStack :: AstStack -> Maybe AstStackElement
+topAstStack = head
+
+replaceAstStack :: AstStack -> AstStackElement -> AstStack
+replaceAstStack stack el = pushAstStack el stack
+
+sizeAstStack :: AstStack -> Int
+sizeAstStack = length
+
+emptyAstStack :: AstStack
+emptyAstStack = nil
+
+type TreeBuildState = 
+    { buildStack :: AstStack
+    }
+
+data BuildCommand 
+    = Next
+    | AddToken Token
+    | AddDerivation DerivationType
+
+buildTree :: TreeBuildState -> BuildCommand -> Either String TreeBuildState
+buildTree state@{buildStack: stack} Next = -- we received a command to go to the next available opening
+    let popped = popAstStack stack
+    in
+        case topAstStack stack of
+            Nothing -> Left $ "Request to go to next when there was nothing in stack"
+            Just element -> case element of 
+                P node lens -> case succ lens of
+                    Just newLens -> Right $ replaceState state (P node newLens)
+                    Nothing ->  Left $ "Program is must be top of tree, so there is no parent to merge into."
+                NSS node lens -> case succ lens of 
+                    Just newLens -> Right $ replaceState state (NSS node newLens)
+                    Nothing -> case topAstStack popped of 
+                        Nothing -> emptyStackError
+                        Just (P parent NormalSpecs_) -> Right $ 
+                            { buildStack: replaceAstStack popped $ (P parent {normal = Just node } $ ErrorSpecs_ ) 
+                            }
+                        _ -> invalidParentError node
+                NS node lens -> case succ lens of 
+                    Just newLens -> Right $ replaceState state (NS node newLens)
+                    Nothing -> case topAstStack popped of 
+                        Nothing -> emptyStackError
+                        Just (NSS parent ArrayNormalSpecs ) -> Right $
+                            { buildStack: replaceAstStack popped $ (NSS parent { specs = (snoc parent.specs node) } ArrayNormalSpecs)
+                            }
+                        _ -> invalidParentError node
+                ESS node lens -> case succ lens of 
+                    Just newLens -> Right $ replaceState state (ESS node newLens)
+                    Nothing -> case topAstStack popped of 
+                        Nothing -> emptyStackError
+                        Just (P parent ErrorSpecs_) -> Right $ 
+                            { buildStack: replaceAstStack popped $ (P parent { error = Just node } $ DefaultSpecs_ )
+                            }
+                        _ -> invalidParentError node
+                ES node lens -> case succ lens of 
+                    Just newLens -> Right $ replaceState state (ES node newLens)
+                    Nothing -> case topAstStack popped of 
+                        Nothing -> emptyStackError
+                        Just (ESS parent ArrayErrorSpecs) -> Right $ 
+                            { buildStack: replaceAstStack popped $ (ESS parent { specs = (snoc parent.specs node) } ArrayErrorSpecs)
+                            }
+                        _ -> invalidParentError node
+                DSS node lens -> case succ lens of 
+                    Just newLens -> Right $ replaceState state (DSS node newLens)
+                    Nothing -> case topAstStack popped of 
+                        Nothing -> emptyStackError
+                        Just (P parent DefaultSpecs_) -> Right $ 
+                            { buildStack: replaceAstStack popped $ (P parent { default = Just node} Done_)
+                            }
+                        _ -> invalidParentError node
+                DS node lens -> case succ lens of 
+                    Just newLens -> Right $ replaceState state (DS node newLens)
+                    Nothing -> case topAstStack popped of 
+                        Nothing -> emptyStackError
+                        Just (DSS parent ArrayDefaultSpecs) -> Right $
+                            { buildStack : replaceAstStack popped $ (DSS parent { specs = (snoc parent.specs node)} ArrayDefaultSpecs)
+                            }
+                        _ -> invalidParentError node
+                N node lens -> case succ lens of 
+                    Just newLens -> Right $ replaceState state (N node newLens)
+                    Nothing -> case topAstStack popped of 
+                        Nothing -> emptyStackError
+                        Just x -> case x of 
+                            (NS parent NormalName) -> Right $ 
+                                { buildStack : replaceAstStack popped $ (NS parent { name = Just node } NormalRegex )
+                                }
+                            (ES parent ErrorName) -> Right $ 
+                                { buildStack: replaceAstStack popped $ (ES parent { name = Just node } ErrorEM )
+                                }
+                            _ -> invalidParentError node
+                R node lens -> case succ lens of 
+                    Just newLens -> Right $ replaceState state (R node newLens)
+                    Nothing -> case topAstStack popped of
+                        Nothing -> emptyStackError
+                        Just x -> case x of 
+                            (NS parent NormalRegex) -> buildTree 
+                                { buildStack: replaceAstStack popped $ (NS parent { name = Just node } NormalRegex)
+                                } Next
+                            (ES parent ErrorSync) -> buildTree
+                                { buildStack: replaceAstStack popped $ (ES parent { sync = Just node } ErrorSync)
+                                } Next
+                            (DS parent DefaultSync) -> buildTree
+                                { buildStack: replaceAstStack popped $ (DS parent { sync = Just node } DefaultSync)
+                                } Next
+                            _ -> invalidParentError node
+                EM node lens -> case succ lens of 
+                    Just newLens -> Right $ replaceState state (EM node newLens)
+                    Nothing -> case topAstStack popped of
+                        Nothing -> emptyStackError
+                        Just x -> case x of 
+                            (ES parent ErrorEM) -> Right $ 
+                                { buildStack: replaceAstStack popped $ (ES parent { error = Just node } ErrorSync)
+                                }
+                            (DS parent DefaultMessage) -> Right $ 
+                                { buildStack: replaceAstStack popped $ (DS parent { error = Just node } DefaultSync)
+                                }
+                            _ -> invalidParentError node
+    where 
+        replaceState :: TreeBuildState -> AstStackElement -> TreeBuildState
+        replaceState state_@{buildStack: stack_} el = state_ { buildStack = replaceAstStack stack_ el}
+
+        emptyStackError :: forall a. Either String a
+        emptyStackError = Left $ "Nothing on top of stack. Can't merge node with parent"
+
+        invalidParentError :: forall a b. Show b => b -> Either String a
+        invalidParentError sh = Left $ "Invalid parent for " <> show sh
+
+buildTree state@{buildStack: stack} (AddToken token) = Right state
+buildTree state@{buildStack: stack} (AddDerivation deriv) = Right state
+

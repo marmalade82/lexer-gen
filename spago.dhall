@@ -8,6 +8,7 @@ You can edit this file as you like.
   , "console"
   , "effect"
   , "foreign-generic"
+  , "profunctor-lenses"
   , "psci-support"
   , "spec"
   , "spec-discovery"
