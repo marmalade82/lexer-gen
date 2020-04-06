@@ -412,6 +412,12 @@ instance enumErrorMessageLens :: Enum ErrorMessageLens where
     succ = genericSucc
     pred = genericPred
 
+class Successor a where
+    successor :: a -> Maybe a
+
+class Parent a where
+    mergeToParent :: a -> a -> Either String a
+
 data AstStackElement
     = P Program ProgramLens
     | NSS NormalSpecs NormalSpecsLens
@@ -423,6 +429,74 @@ data AstStackElement
     | N Name NameLens
     | R Regex RegexLens
     | EM ErrorMessage ErrorMessageLens
+
+instance succAstStackEl :: Successor AstStackElement where
+    successor (P node lens) = (P node) <$> succ lens
+    successor (NSS node lens) = (NSS node) <$> succ lens
+    successor (NS node lens) = (NS node) <$> succ lens
+    successor (ESS node lens) = (ESS node) <$> succ lens
+    successor (ES node lens) = (ES node) <$> succ lens
+    successor (DSS node lens) = (DSS node) <$> succ lens
+    successor (DS node lens) = (DS node) <$> succ lens
+    successor (N node lens) = (N node) <$> succ lens
+    successor (R node lens) = (R node) <$> succ lens
+    successor (EM node lens) = (EM node) <$> succ lens
+
+instance parentAstStackElement :: Parent AstStackElement where
+    mergeToParent (P node lens) p = Left $ "Program is must be top of tree, so there is no parent to merge into"
+    mergeToParent (NSS node lens) p = 
+        let nextLens = maybeSucc lens 
+        in  case p of 
+                (P parent NormalSpecs_) -> Right $ (P parent { normal = Just node } (maybeSucc NormalSpecs_))
+                _ -> invalidParentError node
+    mergeToParent (NS node lens) p = 
+        case p of 
+            (NSS parent ArrayNormalSpecs ) -> Right $ (NSS parent { specs = (snoc parent.specs node) } ArrayNormalSpecs)
+            _ -> invalidParentError node
+    mergeToParent (ESS node lens) p = case p of
+            (P parent ErrorSpecs_) -> Right $ 
+                (P parent { error = Just node } $ DefaultSpecs_ )
+            _ -> invalidParentError node
+    mergeToParent (ES node lens) p = case p of 
+            (ESS parent ArrayErrorSpecs) -> Right $ 
+                (ESS parent { specs = (snoc parent.specs node) } ArrayErrorSpecs)
+            _ -> invalidParentError node
+    mergeToParent (DSS node lens) p = case p of 
+            (P parent DefaultSpecs_) -> Right $ 
+                (P parent { default = Just node} Done_)
+            _ -> invalidParentError node
+    mergeToParent (DS node lens) p = case p of
+            (DSS parent ArrayDefaultSpecs) -> Right $
+                (DSS parent { specs = (snoc parent.specs node)} ArrayDefaultSpecs)
+            _ -> invalidParentError node
+    mergeToParent (N node lens) p = case p of 
+            (NS parent NormalName) -> Right $ 
+                (NS parent { name = Just node } NormalRegex )
+            (ES parent ErrorName) -> Right $ 
+                (ES parent { name = Just node } ErrorEM )
+            _ -> invalidParentError node
+    mergeToParent (R node lens) p = case p of
+            (NS parent NormalRegex) -> Right
+                (NS parent { name = Just node } NormalRegex)
+            (ES parent ErrorSync) -> Right
+                (ES parent { sync = Just node } ErrorSync)
+            (DS parent DefaultSync) -> Right
+                (DS parent { sync = Just node } DefaultSync)
+            _ -> invalidParentError node
+    mergeToParent (EM node lens) p = case p of
+            (ES parent ErrorEM) -> Right $ 
+                (ES parent { error = Just node } ErrorSync)
+            (DS parent DefaultMessage) -> Right $ 
+                (DS parent { error = Just node } DefaultSync)
+            _ -> invalidParentError node
+
+maybeSucc :: forall a. Enum a => a -> a
+maybeSucc e = case succ e of 
+    Nothing -> e
+    Just s -> s
+
+invalidParentError :: forall a b. Show b => b -> Either String a
+invalidParentError sh = Left $ "Invalid parent for " <> show sh
 
 type AstStack = List AstStackElement
 
@@ -460,107 +534,22 @@ buildTree state@{buildStack: stack} Next = -- we received a command to go to the
     let popped = popAstStack stack
     in
         case topAstStack stack of
-            Nothing -> Left $ "Request to go to next when there was nothing in stack"
-            Just element -> case element of 
-                P node lens -> case succ lens of
-                    Just newLens -> Right $ replaceState state (P node newLens)
-                    Nothing ->  Left $ "Program is must be top of tree, so there is no parent to merge into."
-                NSS node lens -> case succ lens of 
-                    Just newLens -> Right $ replaceState state (NSS node newLens)
-                    Nothing -> case topAstStack popped of 
-                        Nothing -> emptyStackError
-                        Just (P parent NormalSpecs_) -> Right $ 
-                            { buildStack: replaceAstStack popped $ (P parent {normal = Just node } $ ErrorSpecs_ ) 
+            Nothing -> Left $ "Invalid equest to go to next when there was nothing in stack"
+            Just element -> case successor element of 
+                Just suc -> Right $ replaceState state suc
+                Nothing -> case topAstStack popped of  -- if no successor, it is time to merge to parent.
+                    Nothing -> emptyStackError
+                    Just parent -> case mergeToParent element parent of
+                        Right newTop -> Right $ 
+                            { buildStack: replaceAstStack popped newTop
                             }
-                        _ -> invalidParentError node
-                NS node lens -> case succ lens of 
-                    Just newLens -> Right $ replaceState state (NS node newLens)
-                    Nothing -> case topAstStack popped of 
-                        Nothing -> emptyStackError
-                        Just (NSS parent ArrayNormalSpecs ) -> Right $
-                            { buildStack: replaceAstStack popped $ (NSS parent { specs = (snoc parent.specs node) } ArrayNormalSpecs)
-                            }
-                        _ -> invalidParentError node
-                ESS node lens -> case succ lens of 
-                    Just newLens -> Right $ replaceState state (ESS node newLens)
-                    Nothing -> case topAstStack popped of 
-                        Nothing -> emptyStackError
-                        Just (P parent ErrorSpecs_) -> Right $ 
-                            { buildStack: replaceAstStack popped $ (P parent { error = Just node } $ DefaultSpecs_ )
-                            }
-                        _ -> invalidParentError node
-                ES node lens -> case succ lens of 
-                    Just newLens -> Right $ replaceState state (ES node newLens)
-                    Nothing -> case topAstStack popped of 
-                        Nothing -> emptyStackError
-                        Just (ESS parent ArrayErrorSpecs) -> Right $ 
-                            { buildStack: replaceAstStack popped $ (ESS parent { specs = (snoc parent.specs node) } ArrayErrorSpecs)
-                            }
-                        _ -> invalidParentError node
-                DSS node lens -> case succ lens of 
-                    Just newLens -> Right $ replaceState state (DSS node newLens)
-                    Nothing -> case topAstStack popped of 
-                        Nothing -> emptyStackError
-                        Just (P parent DefaultSpecs_) -> Right $ 
-                            { buildStack: replaceAstStack popped $ (P parent { default = Just node} Done_)
-                            }
-                        _ -> invalidParentError node
-                DS node lens -> case succ lens of 
-                    Just newLens -> Right $ replaceState state (DS node newLens)
-                    Nothing -> case topAstStack popped of 
-                        Nothing -> emptyStackError
-                        Just (DSS parent ArrayDefaultSpecs) -> Right $
-                            { buildStack : replaceAstStack popped $ (DSS parent { specs = (snoc parent.specs node)} ArrayDefaultSpecs)
-                            }
-                        _ -> invalidParentError node
-                N node lens -> case succ lens of 
-                    Just newLens -> Right $ replaceState state (N node newLens)
-                    Nothing -> case topAstStack popped of 
-                        Nothing -> emptyStackError
-                        Just x -> case x of 
-                            (NS parent NormalName) -> Right $ 
-                                { buildStack : replaceAstStack popped $ (NS parent { name = Just node } NormalRegex )
-                                }
-                            (ES parent ErrorName) -> Right $ 
-                                { buildStack: replaceAstStack popped $ (ES parent { name = Just node } ErrorEM )
-                                }
-                            _ -> invalidParentError node
-                R node lens -> case succ lens of 
-                    Just newLens -> Right $ replaceState state (R node newLens)
-                    Nothing -> case topAstStack popped of
-                        Nothing -> emptyStackError
-                        Just x -> case x of 
-                            (NS parent NormalRegex) -> buildTree 
-                                { buildStack: replaceAstStack popped $ (NS parent { name = Just node } NormalRegex)
-                                } Next
-                            (ES parent ErrorSync) -> buildTree
-                                { buildStack: replaceAstStack popped $ (ES parent { sync = Just node } ErrorSync)
-                                } Next
-                            (DS parent DefaultSync) -> buildTree
-                                { buildStack: replaceAstStack popped $ (DS parent { sync = Just node } DefaultSync)
-                                } Next
-                            _ -> invalidParentError node
-                EM node lens -> case succ lens of 
-                    Just newLens -> Right $ replaceState state (EM node newLens)
-                    Nothing -> case topAstStack popped of
-                        Nothing -> emptyStackError
-                        Just x -> case x of 
-                            (ES parent ErrorEM) -> Right $ 
-                                { buildStack: replaceAstStack popped $ (ES parent { error = Just node } ErrorSync)
-                                }
-                            (DS parent DefaultMessage) -> Right $ 
-                                { buildStack: replaceAstStack popped $ (DS parent { error = Just node } DefaultSync)
-                                }
-                            _ -> invalidParentError node
+                        Left str -> Left str
     where 
         replaceState :: TreeBuildState -> AstStackElement -> TreeBuildState
         replaceState state_@{buildStack: stack_} el = state_ { buildStack = replaceAstStack stack_ el}
 
         emptyStackError :: forall a. Either String a
         emptyStackError = Left $ "Nothing on top of stack. Can't merge node with parent"
-
-        invalidParentError :: forall a b. Show b => b -> Either String a
-        invalidParentError sh = Left $ "Invalid parent for " <> show sh
 
 buildTree state@{buildStack: stack} (AddToken token) = Right state
 buildTree state@{buildStack: stack} (AddDerivation deriv) = Right state
