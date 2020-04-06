@@ -418,6 +418,9 @@ class Successor a where
 class Parent a where
     mergeToParent :: a -> a -> Either String a
 
+class Initializable a where
+    init :: a
+
 data AstStackElement
     = P Program ProgramLens
     | NSS NormalSpecs NormalSpecsLens
@@ -529,12 +532,15 @@ data BuildCommand
     | AddToken Token
     | AddDerivation DerivationType
 
+replaceState :: TreeBuildState -> AstStackElement -> TreeBuildState
+replaceState state_@{buildStack: stack_} el = state_ { buildStack = replaceAstStack stack_ el}
+
 buildTree :: TreeBuildState -> BuildCommand -> Either String TreeBuildState
 buildTree state@{buildStack: stack} Next = -- we received a command to go to the next available opening
     let popped = popAstStack stack
     in
         case topAstStack stack of
-            Nothing -> Left $ "Invalid equest to go to next when there was nothing in stack"
+            Nothing -> Left $ "Invalid request to go to next when there was nothing in stack"
             Just element -> case successor element of 
                 Just suc -> Right $ replaceState state suc
                 Nothing -> case topAstStack popped of  -- if no successor, it is time to merge to parent.
@@ -545,12 +551,45 @@ buildTree state@{buildStack: stack} Next = -- we received a command to go to the
                             }
                         Left str -> Left str
     where 
-        replaceState :: TreeBuildState -> AstStackElement -> TreeBuildState
-        replaceState state_@{buildStack: stack_} el = state_ { buildStack = replaceAstStack stack_ el}
-
         emptyStackError :: forall a. Either String a
         emptyStackError = Left $ "Nothing on top of stack. Can't merge node with parent"
 
-buildTree state@{buildStack: stack} (AddToken token) = Right state
-buildTree state@{buildStack: stack} (AddDerivation deriv) = Right state
+buildTree state@{buildStack: stack} (AddToken token) = -- we received a command to add a token
+    case topAstStack stack of 
+        Nothing -> Left "Could not add token. Stack was empty"
+        Just el -> case el of 
+            (N name lens) -> Right $ replaceState state (N (name { token = Just token } ) lens)
+            (R regex lens) -> Right $ replaceState state (R (regex { token = Just token }) lens)
+            (EM em lens) -> Right $ replaceState state (EM (em { token = Just token } ) lens)
+            _ -> Left $ "Could not add token " <> show token <> ", current node does not accept tokens"
+buildTree state@{buildStack: stack} (AddDerivation deriv) = -- we received a command to add a new node to the top of the stack
+    case deriv of
+        DProgram -> Right $ pushState state (P { normal: Nothing, error: Nothing, default: Nothing} NormalSpecs_)
+        DNormalSpecs -> Right $ pushState state (NSS { specs: [] } ArrayNormalSpecs)
+        DNormalSpec -> Right $ pushState state (NS {name: Nothing, regex: Nothing} NormalName)
+        DErrorSpecs -> Right $ pushState state (ESS { specs: [] } ArrayErrorSpecs)
+        DErrorSpec -> Right $ pushState state (ES { name: Nothing, error: Nothing, sync: Nothing } ErrorName)
+        DDefaultSpecs -> Right $ pushState state (DSS { specs: [] } ArrayDefaultSpecs)
+        DDefaultError -> Right $ pushState state (DS { error: Nothing, sync: Nothing } DefaultMessage)
+        DName -> Right $ pushState state (N { token: Nothing } Name_)
+        DRegex -> Right $ pushState state (R { token: Nothing } Regex_)
+        DErrorMessage -> Right $ pushState state (EM { token: Nothing } ErrorMessage_)
+
+        -- The following are not part of the AST at this time.
+        DNormalTokens -> Right state
+        DErrorTokens -> Right state
+        DDefaultTokens -> Right state
+        DNormalHeader -> Right state
+        DErrorHeader -> Right state
+        DDefaultHeader -> Right state
+        DOptionalSync -> Right $ state
+        DDefault -> Right $ state
+        DTerminator -> Right $ state
+        DEof -> Right $ state
+        DFAIL -> Right $ state
+
+    where 
+        pushState :: TreeBuildState -> AstStackElement -> TreeBuildState
+        pushState state_@{ buildStack: stack_ } el = state_ { buildStack = pushAstStack el stack_ }
+
 
