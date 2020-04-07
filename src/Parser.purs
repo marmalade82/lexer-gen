@@ -11,7 +11,7 @@ module Parser
 where 
 
 import Prelude
- 
+
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray, appendArray, singleton)
 import Data.Either (Either(..))
@@ -20,7 +20,7 @@ import Data.List.Lazy as LL
 import Data.Map (Map, fromFoldable, lookup)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
-import ParserAST (TreeBuildState, buildTree, emptyBuildState, extract)
+import ParserAST (BuildCommand(..), TreeBuildState, buildTree, emptyBuildState, extract)
 import ParserTypes (AST(..), DerivationType(..), TokenType(..), Token, equals)
 
 
@@ -131,40 +131,46 @@ doParse ts =
                 current :: TokenType
                 current = token.type
 
-                result :: Either String ParseState
+                result :: Either String ParseState 
                 result = do
                     let l = topStack stack
+                        popped = popStack stack
                     case l of 
                         Nothing -> Left $ "No leftmost found on stack on terminal " <> show current
-                        Just leftmost -> do
-                            if isTerminal leftmost
-                            then if current `equals` leftmost
-                                then do -- We're done with the current token and leftmost symbol. It's time to use it to build
-                                    withDeriv <- buildTree (Right leftmost) state.astBuildState 
-                                    newBuildState <- buildTree (Left token) withDeriv
-                                    pure $ state { stack = popStack stack, astBuildState = newBuildState }
-                                else 
-                                    Left $ "Terminal " <> show current <> " did not match " <> show leftmost
-                            else -- we need to recursively find the next stack until we are finished with this terminal.
-                                let entry :: TableEntry
-                                    entry = getEntry leftmost current
-                                in  case entry of 
-                                        STUCK -> -- we're done, since we got stuck
-                                            Left $ "Parser got stuck here looking at stack: " <> show stack <> " and token " <> show current
-                                        Replace arr -> do   -- We need to replace the top of the stack with what's in @arr
-                                                            -- We need to push the consumed nonterminal to the AST builder
-                                            newBuildState <- buildTree (Right leftmost) state.astBuildState
-                                            let withReplaced = foldr push (popStack stack) arr :: Stack
-                                            let newState = state { stack = withReplaced, astBuildState = newBuildState } :: ParseState
-                                            processToken token newState
-                                        Discard -> do   -- Discard tells us that the nonterminal went to empty string,
-                                                        -- so there's no need to send it to the AST builder
-                                            let afterDiscard = popStack stack  :: Stack
-                                            let newState = state { stack = afterDiscard } :: ParseState
-                                            processToken token newState
-                                where 
-                                    push :: DerivationType -> Stack -> Stack
-                                    push de st = pushStack de st
+                        Just leftmost -> case leftmost of 
+                            DoneWithNode -> do -- special derivation type that marks the end of a subderivation
+                                newBuildState <- buildTree state.astBuildState $ Up
+                                let newState = state { stack = popped, astBuildState = newBuildState } :: ParseState
+                                processToken token newState
+                            _ -> do
+                                if isTerminal leftmost
+                                then if current `equals` leftmost
+                                    then do -- We're done with the current token and leftmost symbol. It's time to use it to build
+                                        withDeriv <- buildTree state.astBuildState $ AddDerivation leftmost
+                                        withMatch <- buildTree withDeriv $ Match token
+                                        newBuildState <- buildTree withMatch $ Next
+                                        pure $ state { stack = popped, astBuildState = newBuildState }
+                                    else 
+                                        Left $ "Terminal " <> show current <> " did not match " <> show leftmost
+                                else -- we need to recursively find the next stack until we are finished with this terminal.
+                                    let entry :: TableEntry
+                                        entry = getEntry leftmost current
+                                    in  case entry of 
+                                            STUCK -> -- we're done, since we got stuck
+                                                Left $ "Parser got stuck here looking at stack: " <> show stack <> " and token " <> show current
+                                            Replace arr -> do   -- We've verified the leftmost derivation has a match
+                                                newBuildState <- buildTree state.astBuildState $ AddDerivation leftmost
+                                                let replaced = foldr push (pushStack DoneWithNode popped) arr :: Stack
+                                                    newState = state { stack = replaced, astBuildState = newBuildState } :: ParseState
+                                                processToken token newState
+                                            Discard -> do   -- Discard tells us that the nonterminal went to empty string,
+                                                            -- so the AST builder should go to the next open slot.
+                                                newBuildState <- buildTree state.astBuildState $ Next
+                                                let newState = state { stack = popped, astBuildState = newBuildState } :: ParseState
+                                                processToken token newState
+                                    where 
+                                        push :: DerivationType -> Stack -> Stack
+                                        push de st = pushStack de st
             in  result
             
 
@@ -213,6 +219,8 @@ derivTypeToIndex d =
         DFAIL               -> 18
         DDefault            -> 19
         DEof                -> 20
+            -- Nonvalid deriv types here
+        DoneWithNode        -> -1
 
 isTerminal :: DerivationType -> Boolean
 isTerminal d = case d of 
@@ -354,7 +362,7 @@ getEntry dType tType =
                     in fromFoldable tokenEntries
                     where 
                         t = Discard
-                        n = Replace $ singleton DName
+                        n = Replace $ singleton DName 
 
 type Stack = LL.List (DerivationType)
 

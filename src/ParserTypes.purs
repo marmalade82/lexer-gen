@@ -177,6 +177,8 @@ data DerivationType
     | DFAIL
     | DDefault
     | DEof
+        -- utility for AST building
+    | DoneWithNode
 derive instance genericDerivType :: Generic DerivationType _
 instance showDerivationType :: Show DerivationType where show = genericShow
 instance eqDerivationType :: Eq DerivationType where eq = genericEq

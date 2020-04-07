@@ -306,7 +306,8 @@ type TreeBuildState =
 
 data BuildCommand 
     = Next
-    | AddToken Token
+    | Up
+    | Match Token
     | AddDerivation DerivationType
 
 replaceState :: TreeBuildState -> AstStackElement -> TreeBuildState
@@ -320,18 +321,24 @@ buildTree state@{buildStack: stack} Next = -- we received a command to go to the
             Nothing -> Left $ "Invalid request to go to next when there was nothing in stack"
             Just element -> case successor element of 
                 Just suc -> Right $ replaceState state suc
-                Nothing -> case topAstStack popped of  -- if no successor, it is time to merge to parent.
-                    Nothing -> emptyStackError
-                    Just parent -> case mergeToParent element parent of
-                        Right newTop -> Right $ 
-                            { buildStack: replaceAstStack popped newTop
-                            }
-                        Left str -> Left str
+                Nothing -> Right state
     where 
         emptyStackError :: forall a. Either String a
         emptyStackError = Left $ "Nothing on top of stack. Can't merge node with parent"
 
-buildTree state@{buildStack: stack} (AddToken token) = -- we received a command to add a token
+buildTree state@{buildStack: stack} Up = -- command to merge node to parent
+    let popped = popAstStack stack
+    in  case topAstStack stack of 
+            Nothing -> Left $ "Invalid request to go up when there was nothing in the stack"
+            Just element -> case topAstStack popped of 
+                Nothing -> Left $ "Invalid request to go up when there was no parent in the stack"
+                Just parent -> case mergeToParent element parent of 
+                    Right newTop -> Right $ 
+                            { buildStack: replaceAstStack popped newTop
+                            }
+                    Left str -> Left str
+
+buildTree state@{buildStack: stack} (Match token) = -- we received a command to add a token
     case topAstStack stack of 
         Nothing -> Left "Could not add token. Stack was empty"
         Just el -> case el of 
@@ -341,7 +348,7 @@ buildTree state@{buildStack: stack} (AddToken token) = -- we received a command 
             _ -> Left $ "Could not add token " <> show token <> ", current node does not accept tokens"
 buildTree state@{buildStack: stack} (AddDerivation deriv) = -- we received a command to add a new node to the top of the stack
     case deriv of
-        DProgram -> Right $ pushState state (P { normal: Nothing, error: Nothing, default: Nothing} NormalSpecs_)
+        DProgram -> Right $ pushState state (P { normal: Nothing, error: Nothing, default: Nothing} NormalSpecs_) 
         DNormalSpecs -> Right $ pushState state (NSS { specs: [] } ArrayNormalSpecs)
         DNormalSpec -> Right $ pushState state (NS {name: Nothing, regex: Nothing} NormalName)
         DErrorSpecs -> Right $ pushState state (ESS { specs: [] } ArrayErrorSpecs)
@@ -364,6 +371,7 @@ buildTree state@{buildStack: stack} (AddDerivation deriv) = -- we received a com
         DTerminator -> Right $ state
         DEof -> Right $ state
         DFAIL -> Right $ state
+        DoneWithNode -> Right $ state
 
     where 
         pushState :: TreeBuildState -> AstStackElement -> TreeBuildState
