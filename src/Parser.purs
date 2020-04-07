@@ -11,7 +11,7 @@ module Parser
 where 
 
 import Prelude
-
+ 
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray, appendArray, singleton)
 import Data.Either (Either(..))
@@ -20,7 +20,7 @@ import Data.List.Lazy as LL
 import Data.Map (Map, fromFoldable, lookup)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
-import ParserAST (BuildState, build, emptyBuildState, extract)
+import ParserAST (TreeBuildState, buildTree, emptyBuildState, extract)
 import ParserTypes (AST(..), DerivationType(..), TokenType(..), Token, equals)
 
 
@@ -55,7 +55,7 @@ parse arr =
 type ParseState = 
     { continue :: Boolean
     , stack :: Stack
-    , astBuildState :: BuildState
+    , astBuildState :: TreeBuildState
     , result :: ParseResult
     }
 
@@ -140,8 +140,8 @@ doParse ts =
                             if isTerminal leftmost
                             then if current `equals` leftmost
                                 then do -- We're done with the current token and leftmost symbol. It's time to use it to build
-                                    withDeriv <- build (Right leftmost) state.astBuildState 
-                                    newBuildState <- build (Left token) withDeriv
+                                    withDeriv <- buildTree (Right leftmost) state.astBuildState 
+                                    newBuildState <- buildTree (Left token) withDeriv
                                     pure $ state { stack = popStack stack, astBuildState = newBuildState }
                                 else 
                                     Left $ "Terminal " <> show current <> " did not match " <> show leftmost
@@ -153,7 +153,7 @@ doParse ts =
                                             Left $ "Parser got stuck here looking at stack: " <> show stack <> " and token " <> show current
                                         Replace arr -> do   -- We need to replace the top of the stack with what's in @arr
                                                             -- We need to push the consumed nonterminal to the AST builder
-                                            newBuildState <- build (Right leftmost) state.astBuildState
+                                            newBuildState <- buildTree (Right leftmost) state.astBuildState
                                             let withReplaced = foldr push (popStack stack) arr :: Stack
                                             let newState = state { stack = withReplaced, astBuildState = newBuildState } :: ParseState
                                             processToken token newState
