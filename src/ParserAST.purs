@@ -12,7 +12,7 @@ import Data.Generic.Rep.Ord (genericCompare)
 import Data.Generic.Rep.Show (genericShow)
 import Data.List.Lazy (List, cons, tail, head, length, nil)
 import Data.Maybe (Maybe(..))
-import ParserTypes (AST, DerivationType(..), Token)
+import ParserTypes (AST, DerivationType(..), Token, validForAst) 
 
 
 extract :: TreeBuildState -> Either String AST
@@ -218,38 +218,38 @@ instance succAstStackEl :: Successor AstStackElement where
     successor (EM node lens) = (EM node) <$> succ lens
 
 instance parentAstStackElement :: Parent AstStackElement where
-    mergeToParent (P node lens) p = Left $ "Program is must be top of tree, so there is no parent to merge into"
+    mergeToParent prog@(P node lens) p = Left $ "Program " <> show prog <> " is supposed to be top. Could not merge into (" <> show p <> ")"
     mergeToParent (NSS node lens) p = 
         let nextLens = maybeSucc lens 
         in  case p of 
                 (P parent NormalSpecs_) -> Right $ (P parent { normal = Just node } (maybeSucc NormalSpecs_))
-                _ -> invalidParentError node
+                _ -> invalidParentError p node
     mergeToParent (NS node lens) p = 
         case p of 
             (NSS parent ArrayNormalSpecs ) -> Right $ (NSS parent { specs = (snoc parent.specs node) } ArrayNormalSpecs)
-            _ -> invalidParentError node
+            _ -> invalidParentError p node
     mergeToParent (ESS node lens) p = case p of
             (P parent ErrorSpecs_) -> Right $ 
                 (P parent { error = Just node } $ DefaultSpecs_ )
-            _ -> invalidParentError node
+            _ -> invalidParentError p node
     mergeToParent (ES node lens) p = case p of 
             (ESS parent ArrayErrorSpecs) -> Right $ 
                 (ESS parent { specs = (snoc parent.specs node) } ArrayErrorSpecs)
-            _ -> invalidParentError node
+            _ -> invalidParentError p node
     mergeToParent (DSS node lens) p = case p of 
             (P parent DefaultSpecs_) -> Right $ 
                 (P parent { default = Just node} Done_)
-            _ -> invalidParentError node
+            _ -> invalidParentError p node
     mergeToParent (DS node lens) p = case p of
             (DSS parent ArrayDefaultSpecs) -> Right $
                 (DSS parent { specs = (snoc parent.specs node)} ArrayDefaultSpecs)
-            _ -> invalidParentError node
+            _ -> invalidParentError p node
     mergeToParent (N node lens) p = case p of 
             (NS parent NormalName) -> Right $ 
                 (NS parent { name = Just node } NormalRegex )
             (ES parent ErrorName) -> Right $ 
                 (ES parent { name = Just node } ErrorEM )
-            _ -> invalidParentError node
+            _ -> invalidParentError p node
     mergeToParent (R node lens) p = case p of
             (NS parent NormalRegex) -> Right
                 (NS parent { name = Just node } NormalRegex)
@@ -257,21 +257,21 @@ instance parentAstStackElement :: Parent AstStackElement where
                 (ES parent { sync = Just node } ErrorSync)
             (DS parent DefaultSync) -> Right
                 (DS parent { sync = Just node } DefaultSync)
-            _ -> invalidParentError node
+            _ -> invalidParentError p node
     mergeToParent (EM node lens) p = case p of
             (ES parent ErrorEM) -> Right $ 
                 (ES parent { error = Just node } ErrorSync)
             (DS parent DefaultMessage) -> Right $ 
                 (DS parent { error = Just node } DefaultSync)
-            _ -> invalidParentError node
+            _ -> invalidParentError p node
 
 maybeSucc :: forall a. Enum a => a -> a
 maybeSucc e = case succ e of 
     Nothing -> e
     Just s -> s
 
-invalidParentError :: forall a b. Show b => b -> Either String a
-invalidParentError sh = Left $ "Invalid parent for " <> show sh
+invalidParentError :: forall a b c . Show b => Show c => b -> c -> Either String a
+invalidParentError parent sh = Left $ "Invalid parent (" <> show parent <> ") for " <> show sh
 
 type AstStack = List AstStackElement
 
@@ -287,7 +287,7 @@ topAstStack :: AstStack -> Maybe AstStackElement
 topAstStack = head
 
 replaceAstStack :: AstStack -> AstStackElement -> AstStack
-replaceAstStack stack el = pushAstStack el stack
+replaceAstStack stack el = pushAstStack el (popAstStack stack)
 
 sizeAstStack :: AstStack -> Int
 sizeAstStack = length
@@ -322,16 +322,13 @@ buildTree state@{buildStack: stack} Next = -- we received a command to go to the
             Just element -> case successor element of 
                 Just suc -> Right $ replaceState state suc
                 Nothing -> Right state
-    where 
-        emptyStackError :: forall a. Either String a
-        emptyStackError = Left $ "Nothing on top of stack. Can't merge node with parent"
 
 buildTree state@{buildStack: stack} Up = -- command to merge node to parent
     let popped = popAstStack stack
     in  case topAstStack stack of 
             Nothing -> Left $ "Invalid request to go up when there was nothing in the stack"
             Just element -> case topAstStack popped of 
-                Nothing -> Left $ "Invalid request to go up when there was no parent in the stack"
+                Nothing -> Left $ "Invalid request to go up from (" <> show element <> ") when there was no parent in the stack"
                 Just parent -> case mergeToParent element parent of 
                     Right newTop -> Right $ 
                             { buildStack: replaceAstStack popped newTop
@@ -340,12 +337,14 @@ buildTree state@{buildStack: stack} Up = -- command to merge node to parent
 
 buildTree state@{buildStack: stack} (Match token) = -- we received a command to add a token
     case topAstStack stack of 
-        Nothing -> Left "Could not add token. Stack was empty"
+        Nothing -> Left $ "Could not add token (" <> show token <> "). Stack was empty"
         Just el -> case el of 
             (N name lens) -> Right $ replaceState state (N (name { token = Just token } ) lens)
             (R regex lens) -> Right $ replaceState state (R (regex { token = Just token }) lens)
             (EM em lens) -> Right $ replaceState state (EM (em { token = Just token } ) lens)
-            _ -> Left $ "Could not add token " <> show token <> ", current node does not accept tokens"
+            _ -> if not validForAst token.type 
+                 then Right state -- we discard if this is not a relevant token
+                 else Left $ "Could not add token " <> show token <> ", current node (" <> show el <> ") does not accept tokens"
 buildTree state@{buildStack: stack} (AddDerivation deriv) = -- we received a command to add a new node to the top of the stack
     case deriv of
         DProgram -> Right $ pushState state (P { normal: Nothing, error: Nothing, default: Nothing} NormalSpecs_) 
@@ -358,21 +357,9 @@ buildTree state@{buildStack: stack} (AddDerivation deriv) = -- we received a com
         DName -> Right $ pushState state (N { token: Nothing } Name_)
         DRegex -> Right $ pushState state (R { token: Nothing } Regex_)
         DErrorMessage -> Right $ pushState state (EM { token: Nothing } ErrorMessage_)
-
-        -- The following are not part of the AST at this time.
-        DNormalTokens -> Right state
-        DErrorTokens -> Right state
-        DDefaultTokens -> Right state
-        DNormalHeader -> Right state
-        DErrorHeader -> Right state
-        DDefaultHeader -> Right state
-        DOptionalSync -> Right $ state
-        DDefault -> Right $ state
-        DTerminator -> Right $ state
-        DEof -> Right $ state
-        DFAIL -> Right $ state
-        DoneWithNode -> Right $ state
-
+        _ -> if not validForAst deriv 
+             then Right state -- we just discard
+             else Left $ "Tried to add derivation (" <> show deriv <> ") which was not valid for ast"
     where 
         pushState :: TreeBuildState -> AstStackElement -> TreeBuildState
         pushState state_@{ buildStack: stack_ } el = state_ { buildStack = pushAstStack el stack_ }

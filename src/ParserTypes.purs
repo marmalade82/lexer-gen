@@ -5,7 +5,10 @@ module ParserTypes
     , AST(..)
     , DerivationType(..)
     , equals
+    , class ValidForAst
+    , validForAst
     ) where
+
 import Prelude
 import Data.Array as Array
 import Data.Generic.Rep (class Generic)
@@ -16,6 +19,9 @@ import Data.String as Str
 import Data.Traversable (foldr, foldl)
 import Data.Int (round, toNumber)
 import Math (max)
+
+class ValidForAst a where
+    validForAst :: a -> Boolean
 
 data TokenType
     = NormalHeader
@@ -31,6 +37,19 @@ data TokenType
 derive instance genericTokenType :: Generic TokenType _
 instance showTokenType :: Show TokenType where show = genericShow
 instance eqTokenType :: Eq TokenType where eq = genericEq
+instance validAstTokenType :: ValidForAst TokenType where 
+    validForAst t = case t of 
+        NormalHeader -> false
+        ErrorHeader -> false
+        DefaultHeader -> false
+        Regex -> true
+        ErrorMessage -> true
+        Terminator -> false
+        Name -> true
+        FAIL -> false
+        Default -> false
+        EOF -> false
+
 
 type Token = 
     { type :: TokenType
@@ -182,6 +201,32 @@ data DerivationType
 derive instance genericDerivType :: Generic DerivationType _
 instance showDerivationType :: Show DerivationType where show = genericShow
 instance eqDerivationType :: Eq DerivationType where eq = genericEq
+instance validAstDerivType :: ValidForAst DerivationType where 
+    validForAst d = case d of 
+        DProgram -> true
+        DNormalSpecs -> true
+        DNormalSpec -> true
+        DErrorSpecs -> true
+        DErrorSpec -> true
+        DDefaultSpecs -> true
+        DDefaultError -> true
+        DName -> true
+        DRegex -> true
+        DErrorMessage -> true
+
+        -- The following are not part of the AST at this time, so we throw them away
+        DNormalTokens -> false
+        DErrorTokens -> false
+        DDefaultTokens -> false
+        DNormalHeader -> false
+        DErrorHeader -> false
+        DDefaultHeader -> false
+        DOptionalSync -> false
+        DDefault -> false
+        DTerminator -> false
+        DEof -> false
+        DFAIL -> false
+        DoneWithNode -> false
 
 equals :: TokenType -> DerivationType -> Boolean
 equals NormalHeader DNormalHeader = true
