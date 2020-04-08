@@ -5,6 +5,7 @@ import Prelude
 import Data.Array (snoc)
 import Data.Either (Either(..))
 import Data.Enum (class Enum, succ)
+import Data.Foldable (foldl, foldr)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Enum (genericPred, genericSucc)
 import Data.Generic.Rep.Eq (genericEq)
@@ -202,8 +203,13 @@ data AstStackElement
     | N Name NameLens
     | R Regex RegexLens
     | EM ErrorMessage ErrorMessageLens
+    | Placeholder (Array AstStackElement)
+                    -- for holding a space for derivations that will NOT become a node part of the tree, but still need to 
+                    -- exist to allow commands from the parser to work correctly.
 derive instance genAstStackEl :: Generic AstStackElement _
-instance showAstStackEl :: Show AstStackElement where show = genericShow
+instance showAstStackEl :: Show AstStackElement where 
+    show (Placeholder arr) = "Placeholder " <> show arr
+    show a = genericShow a
 
 instance succAstStackEl :: Successor AstStackElement where
     successor (P node lens) = (P node) <$> succ lens
@@ -216,8 +222,18 @@ instance succAstStackEl :: Successor AstStackElement where
     successor (N node lens) = (N node) <$> succ lens
     successor (R node lens) = (R node) <$> succ lens
     successor (EM node lens) = (EM node) <$> succ lens
+    successor (Placeholder arr) = Just $ Placeholder arr
 
 instance parentAstStackElement :: Parent AstStackElement where
+    -- We take care of placeholder patterns first.
+    mergeToParent (Placeholder arr) parent =  -- for each stored child in the placeholder (which may include more placeholders, we merge into the parent)
+        foldl acc (Right parent) arr
+        where 
+            acc :: Either String AstStackElement -> AstStackElement -> Either String AstStackElement
+            acc p el = case p of 
+                Right parent_ -> mergeToParent el parent_
+                _ -> p
+    mergeToParent child (Placeholder arr) = Right $ Placeholder (snoc arr child) -- we store the child in the placeholder
     mergeToParent prog@(P node lens) p = Left $ "Program " <> show prog <> " is supposed to be top. Could not merge into (" <> show p <> ")"
     mergeToParent (NSS node lens) p = 
         let nextLens = maybeSucc lens 
@@ -226,43 +242,43 @@ instance parentAstStackElement :: Parent AstStackElement where
                 _ -> invalidParentError p node
     mergeToParent (NS node lens) p = 
         case p of 
-            (NSS parent ArrayNormalSpecs ) -> Right $ (NSS parent { specs = (snoc parent.specs node) } ArrayNormalSpecs)
+            (NSS parent ArrayNormalSpecs ) -> Right $ (NSS parent { specs = (snoc parent.specs node) } (maybeSucc ArrayNormalSpecs))
             _ -> invalidParentError p node
     mergeToParent (ESS node lens) p = case p of
             (P parent ErrorSpecs_) -> Right $ 
-                (P parent { error = Just node } $ DefaultSpecs_ )
+                (P parent { error = Just node } $ (maybeSucc ErrorSpecs_) )
             _ -> invalidParentError p node
     mergeToParent (ES node lens) p = case p of 
             (ESS parent ArrayErrorSpecs) -> Right $ 
-                (ESS parent { specs = (snoc parent.specs node) } ArrayErrorSpecs)
+                (ESS parent { specs = (snoc parent.specs node) } (maybeSucc ArrayErrorSpecs))
             _ -> invalidParentError p node
     mergeToParent (DSS node lens) p = case p of 
             (P parent DefaultSpecs_) -> Right $ 
-                (P parent { default = Just node} Done_)
+                (P parent { default = Just node} (maybeSucc DefaultSpecs_))
             _ -> invalidParentError p node
     mergeToParent (DS node lens) p = case p of
             (DSS parent ArrayDefaultSpecs) -> Right $
-                (DSS parent { specs = (snoc parent.specs node)} ArrayDefaultSpecs)
+                (DSS parent { specs = (snoc parent.specs node)} (maybeSucc ArrayDefaultSpecs))
             _ -> invalidParentError p node
     mergeToParent (N node lens) p = case p of 
             (NS parent NormalName) -> Right $ 
-                (NS parent { name = Just node } NormalRegex )
+                (NS parent { name = Just node } (maybeSucc NormalName) )
             (ES parent ErrorName) -> Right $ 
-                (ES parent { name = Just node } ErrorEM )
+                (ES parent { name = Just node } (maybeSucc ErrorName) )
             _ -> invalidParentError p node
     mergeToParent (R node lens) p = case p of
             (NS parent NormalRegex) -> Right
-                (NS parent { name = Just node } NormalRegex)
+                (NS parent { name = Just node } (maybeSucc NormalRegex))
             (ES parent ErrorSync) -> Right
-                (ES parent { sync = Just node } ErrorSync)
+                (ES parent { sync = Just node } (maybeSucc ErrorSync))
             (DS parent DefaultSync) -> Right
-                (DS parent { sync = Just node } DefaultSync)
+                (DS parent { sync = Just node } (maybeSucc DefaultSync))
             _ -> invalidParentError p node
     mergeToParent (EM node lens) p = case p of
             (ES parent ErrorEM) -> Right $ 
-                (ES parent { error = Just node } ErrorSync)
+                (ES parent { error = Just node } (maybeSucc ErrorEM))
             (DS parent DefaultMessage) -> Right $ 
-                (DS parent { error = Just node } DefaultSync)
+                (DS parent { error = Just node } (maybeSucc DefaultMessage))
             _ -> invalidParentError p node
 
 maybeSucc :: forall a. Enum a => a -> a
@@ -358,7 +374,7 @@ buildTree state@{buildStack: stack} (AddDerivation deriv) = -- we received a com
         DRegex -> Right $ pushState state (R { token: Nothing } Regex_)
         DErrorMessage -> Right $ pushState state (EM { token: Nothing } ErrorMessage_)
         _ -> if not validForAst deriv 
-             then Right state -- we just discard
+             then Right $ pushState state (Placeholder [])
              else Left $ "Tried to add derivation (" <> show deriv <> ") which was not valid for ast"
     where 
         pushState :: TreeBuildState -> AstStackElement -> TreeBuildState
