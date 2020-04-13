@@ -148,7 +148,7 @@ doParse ts =
                                     then do -- We're done with the current token and leftmost symbol. It's time to use it to build
                                         withDeriv <- buildTree state.astBuildState $ AddDerivation leftmost
                                         withMatch <- buildTree withDeriv $ Match token
-                                        -- INCORRECT. Matching a token should prompt merging UP newBuildState <- buildTree withMatch $ Next
+                                        newBuildState <- buildTree withMatch $ Next
                                         pure $ state { stack = popped, astBuildState = newBuildState }
                                     else 
                                         Left $ "Terminal " <> show current <> " did not match " <> show leftmost

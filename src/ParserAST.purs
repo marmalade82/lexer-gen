@@ -5,7 +5,7 @@ import Prelude
 import Data.Array (snoc)
 import Data.Either (Either(..))
 import Data.Enum (class Enum, succ)
-import Data.Foldable (foldl, foldr)
+import Data.Foldable (foldl )
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Enum (genericPred, genericSucc)
 import Data.Generic.Rep.Eq (genericEq)
@@ -13,14 +13,114 @@ import Data.Generic.Rep.Ord (genericCompare)
 import Data.Generic.Rep.Show (genericShow)
 import Data.List.Lazy (List, cons, tail, head, length, nil)
 import Data.Maybe (Maybe(..))
-import ParserTypes (AST, DerivationType(..), Token, validForAst) 
+import ParserTypes (AST(..), DerivationType(..), Token, validForAst)
 
-
+-- To extract, the function needs to do one final merge of the stack as far as possible.
 extract :: TreeBuildState -> Either String AST
 extract state@{buildStack: s}
     | sizeAstStack s < 0 = Left $ "AST Stack was empty: " <> show s
-    | sizeAstStack s > 1 = Left $ "AST Stack was not fully merged: " <> show s
-    | otherwise = Left "hi"
+    | otherwise = do 
+        merged <- mergeAll s
+        toAst merged
+
+mergeAll :: AstStack -> Either String Program
+mergeAll stack = 
+    let popped = popAstStack stack
+    in  case topAstStack stack of 
+            Nothing -> Left "Stack was empty. Could not merge into a program"
+            Just (P program Done_) -> Right program
+            Just (P _ x) -> Left $ "Program was not completed: " <> show stack
+            Just x -> case topAstStack popped of 
+                Nothing -> Left $ "Could not merge in mergeAll"
+                Just parent -> case mergeToParent x parent of
+                    Right newTop -> mergeAll $ replaceAstStack popped newTop
+                    Left y -> Left y
+
+toAst :: Program -> Either String AST
+toAst {normal: normalSec, error: errorSec, default: defaultSec} = do
+    normalSpecs <- makeNormalSpecs normalSec
+    errorSpecs <- makeErrorSpecs errorSec
+    defaultSpecs <- makeDefaultSpecs defaultSec
+    pure $ NProgram normalSpecs errorSpecs defaultSpecs
+
+    where 
+        makeNormalSpecs :: Maybe NormalSpecs -> Either String AST
+        makeNormalSpecs n = case n of 
+            Nothing -> Left "AST requires normal specs"
+            Just {specs: s} -> do
+                specs <- makeNormalSpecs_ s :: Either String (Array AST)
+                pure $ NNormalSpecs specs
+
+            where 
+                makeNormalSpecs_ :: Array NormalSpec -> Either String (Array AST)
+                makeNormalSpecs_ arr = 
+                    let specs :: Array (Either String AST)
+                        specs = map makeNormalSpec arr
+                    in  Left "Wait"
+
+                makeNormalSpec :: NormalSpec -> Either String AST
+                makeNormalSpec {name: name, regex: regex} = do 
+                    name_ <- makeName name
+                    regex_ <- makeRegex regex
+                    pure $ NNormalSpec name_ regex_
+
+        makeErrorSpecs :: Maybe ErrorSpecs -> Either String (Maybe AST)
+        makeErrorSpecs e = case e of 
+            Nothing -> Right Nothing
+            Just {specs: s} -> do 
+                specs <- makeErrorSpecs_ s :: Either String (Array AST)
+                pure $ Just (NErrorSpecs specs)
+            where 
+                makeErrorSpecs_ :: Array ErrorSpec -> Either String (Array AST)
+                makeErrorSpecs_ arr = 
+                    let specs :: Array (Either String AST)
+                        specs = map makeErrorSpec arr
+                    in  Left "Wait"
+                makeErrorSpec :: ErrorSpec -> Either String AST
+                makeErrorSpec {name: name, error: error, sync: sync} = do
+                    name_ <- makeName name
+                    error_ <- makeErrorMessage error
+                    sync_ <- makeRegex sync
+                    pure $ NErrorSpec name_ error_ (Just sync_)
+
+
+        makeDefaultSpecs :: Maybe DefaultSpecs -> Either String (Maybe AST)
+        makeDefaultSpecs d = case d of 
+            Nothing -> Right Nothing
+            Just {specs: s} -> do 
+                specs <- makeDefaultSpecs_ s :: Either String (Array AST)
+                pure $ Just (NDefaultSpecs specs)
+            where
+                makeDefaultSpecs_ :: Array DefaultSpec -> Either String (Array AST)
+                makeDefaultSpecs_ arr = 
+                    let specs :: Array (Either String AST)
+                        specs = map makeDefaultSpec arr
+                    in  Left "Wait"
+                makeDefaultSpec :: DefaultSpec -> Either String AST
+                makeDefaultSpec {error: error, sync: sync} = do 
+                    error_ <- makeErrorMessage error
+                    sync_ <- makeRegex sync
+                    pure $ NDefaultError error_ (Just sync_)
+
+
+        makeName :: Maybe Name -> Either String AST
+        makeName n = case n of 
+            Nothing -> Left $ "Required name was not found"
+            Just {token: Nothing} -> Left $ "Required name was not found"
+            Just {token: Just tok} -> Right $ NName tok
+
+        makeRegex :: Maybe Regex -> Either String AST
+        makeRegex r = case r of 
+            Nothing -> Left $ "Required regex was not found"
+            Just {token: Nothing} -> Left $ "Required regex was not found"
+            Just {token: Just tok} -> Right $ NRegex tok
+
+        makeErrorMessage :: Maybe ErrorMessage -> Either String AST
+        makeErrorMessage e = case e of 
+            Nothing -> Left $ "Required error message was not found"
+            Just {token: Nothing} -> Left $ "Required error message was not found"
+            Just {token: Just tok} -> Right $ NErrorMessage tok
+
 
 -- definition of data structures for tree building
 -- we'll create a stack of the ast so far and lenses to which portion is currently under construction,
