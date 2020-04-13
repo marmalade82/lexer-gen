@@ -5,7 +5,7 @@ import Prelude
 
 import Data.Array.NonEmpty (appendArray, singleton)
 import Data.Maybe (Maybe(..))
-import Parser (ParseResult, Token, TokenType(..), parse)
+import Parser (AST(..), ParseResult, Token, TokenType(..), parse)
 import Test.Spec (Spec, describe, it, pending)
 import Test.Spec.Assertions (shouldEqual)
 
@@ -17,6 +17,7 @@ spec = describe "Parsing" do
     errorSectionSpec
     defaultSectionSpec
     --errorSpec
+    stringSpec
 
 headerSpec :: Spec Unit
 headerSpec = describe "Headers" do 
@@ -30,53 +31,53 @@ headerSpec = describe "Headers" do
                 let tokens = makeBasicToken <$>  
                         singleton NormalHeader `appendArray` [ EOF ]
                 let result = asTestString $ parse tokens 
-                result `shouldEqual` "p,nh"
+                result `shouldEqual` "p,"
             it "Error header" do 
                 let tokens = makeBasicToken <$>
                         singleton NormalHeader `appendArray`
                             [ ErrorHeader, EOF]
                 let result = asTestString $ parse tokens
-                result `shouldEqual` "p,nh-eh"
+                result `shouldEqual` "p,"
             it "Default header" do
                 let tokens = makeBasicToken <$>
                         singleton NormalHeader `appendArray`
                             [ DefaultHeader, EOF ]
                 let result = asTestString $ parse tokens
-                result `shouldEqual` "p,nh-eh"
+                result `shouldEqual` "p,"
             it "All headers" do 
                 let tokens = makeBasicToken <$>
                         singleton NormalHeader `appendArray`
-                            [ ErrorHeader, DefaultHeader, EOF ]
+                            [ ErrorHeader, DefaultHeader, EOF ] 
                 let result = asTestString $ parse tokens
-                result `shouldEqual` "p,nh-eh-dh"
+                result `shouldEqual` "p,"
         parseSpec :: Spec Unit
         parseSpec = describe "parses" do
             it "Normal header" do 
                 let tokens = makeBasicToken <$>  
                         singleton NormalHeader `appendArray` [ EOF ]
                 let result = parse tokens
-                --asErrors result `shouldEqual` []
+                asErrors result `shouldEqual` []
                 asSuccess result `shouldEqual` true
             it "Error header" do 
                 let tokens = makeBasicToken <$>
                         singleton NormalHeader `appendArray`
                             [ ErrorHeader, EOF ]
                 let result = parse tokens
-                --asErrors result `shouldEqual` []
+                asErrors result `shouldEqual` []
                 asSuccess result `shouldEqual` true
             it "Default header" do
                 let tokens = makeBasicToken <$>
                         singleton NormalHeader `appendArray`
                             [ DefaultHeader, EOF ]
                 let result = parse tokens
-                --asErrors result `shouldEqual` []
+                asErrors result `shouldEqual` []
                 asSuccess result `shouldEqual` true
             it "All headers" do 
                 let tokens = makeBasicToken <$>
                         singleton NormalHeader `appendArray`
                             [ ErrorHeader, DefaultHeader, EOF ]
                 let result = parse tokens
-                --asErrors result `shouldEqual` []
+                asErrors result `shouldEqual` []
                 asSuccess result `shouldEqual` true
 
 
@@ -94,14 +95,14 @@ normalSectionSpec = describe "Normal section" do
                         singleton NormalHeader `appendArray`
                             [ Name, Regex, Terminator, EOF ]
                 let result = parse tokens
-                --asErrors result `shouldEqual` []
+                asErrors result `shouldEqual` []
                 asSuccess result `shouldEqual` true
             it "Two specs" do
                 let tokens = makeBasicToken <$>
                         singleton NormalHeader `appendArray`
                             [ Name, Regex, Terminator, Name, Regex, Terminator, EOF ]
                 let result = parse tokens
-                --asErrors result `shouldEqual` []
+                asErrors result `shouldEqual` []
                 asSuccess result `shouldEqual` true
 
         astSpec :: Spec Unit
@@ -240,3 +241,11 @@ asSuccess res = res.success
 asErrors :: ParseResult -> Array String
 asErrors res = map errors res.errors
     where errors = \x -> x.message
+
+
+stringSpec :: Spec Unit
+stringSpec = do 
+    describe "Testing stringable" do 
+        it "Strings headers" do 
+            let ast = NProgram (Just $ NNormalSpecs []) (Just $ NErrorSpecs []) (Just $ NDefaultSpecs [])
+            show ast `shouldEqual` ("p,nh-eh-dh,")

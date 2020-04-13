@@ -4,3 +4,4 @@ obj/*
 .spago
 output
 .psc-ide-port
+.psci_modules

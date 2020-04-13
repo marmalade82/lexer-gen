@@ -6,6 +6,7 @@ import Data.Array (snoc)
 import Data.Either (Either(..))
 import Data.Enum (class Enum, succ)
 import Data.Foldable (foldl )
+import Data.Traversable(sequence)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Enum (genericPred, genericSucc)
 import Data.Generic.Rep.Eq (genericEq)
@@ -19,17 +20,21 @@ import ParserTypes (AST(..), DerivationType(..), Token, validForAst)
 extract :: TreeBuildState -> Either String AST
 extract state@{buildStack: s}
     | sizeAstStack s < 0 = Left $ "AST Stack was empty: " <> show s
-    | otherwise = do 
-        merged <- mergeAll s
-        toAst merged
+    | otherwise = 
+        let extracting :: Either String AST
+            extracting = do 
+                merged <- mergeAll s
+                toAst merged
+        in  case extracting of 
+                Right x -> Right x
+                Left msg -> Left $ "Build stack was: " <> show s <> ", with extraction error: " <> msg
 
 mergeAll :: AstStack -> Either String Program
 mergeAll stack = 
     let popped = popAstStack stack
     in  case topAstStack stack of 
             Nothing -> Left "Stack was empty. Could not merge into a program"
-            Just (P program Done_) -> Right program
-            Just (P _ x) -> Left $ "Program was not completed: " <> show stack
+            Just (P program _) -> Right program
             Just x -> case topAstStack popped of 
                 Nothing -> Left $ "Could not merge in mergeAll"
                 Just parent -> case mergeToParent x parent of
@@ -44,19 +49,19 @@ toAst {normal: normalSec, error: errorSec, default: defaultSec} = do
     pure $ NProgram normalSpecs errorSpecs defaultSpecs
 
     where 
-        makeNormalSpecs :: Maybe NormalSpecs -> Either String AST
+        makeNormalSpecs :: Maybe NormalSpecs -> Either String (Maybe AST)
         makeNormalSpecs n = case n of 
-            Nothing -> Left "AST requires normal specs"
+            Nothing -> Right $ Nothing
             Just {specs: s} -> do
                 specs <- makeNormalSpecs_ s :: Either String (Array AST)
-                pure $ NNormalSpecs specs
+                pure $ Just (NNormalSpecs specs )
 
             where 
                 makeNormalSpecs_ :: Array NormalSpec -> Either String (Array AST)
                 makeNormalSpecs_ arr = 
                     let specs :: Array (Either String AST)
                         specs = map makeNormalSpec arr
-                    in  Left "Wait"
+                    in  sequence specs
 
                 makeNormalSpec :: NormalSpec -> Either String AST
                 makeNormalSpec {name: name, regex: regex} = do 
@@ -75,7 +80,7 @@ toAst {normal: normalSec, error: errorSec, default: defaultSec} = do
                 makeErrorSpecs_ arr = 
                     let specs :: Array (Either String AST)
                         specs = map makeErrorSpec arr
-                    in  Left "Wait"
+                    in  sequence specs
                 makeErrorSpec :: ErrorSpec -> Either String AST
                 makeErrorSpec {name: name, error: error, sync: sync} = do
                     name_ <- makeName name
@@ -95,7 +100,7 @@ toAst {normal: normalSec, error: errorSec, default: defaultSec} = do
                 makeDefaultSpecs_ arr = 
                     let specs :: Array (Either String AST)
                         specs = map makeDefaultSpec arr
-                    in  Left "Wait"
+                    in  sequence specs
                 makeDefaultSpec :: DefaultSpec -> Either String AST
                 makeDefaultSpec {error: error, sync: sync} = do 
                     error_ <- makeErrorMessage error
@@ -368,7 +373,7 @@ instance parentAstStackElement :: Parent AstStackElement where
             _ -> invalidParentError p node
     mergeToParent (R node lens) p = case p of
             (NS parent NormalRegex) -> Right
-                (NS parent { name = Just node } (maybeSucc NormalRegex))
+                (NS parent { regex = Just node } (maybeSucc NormalRegex))
             (ES parent ErrorSync) -> Right
                 (ES parent { sync = Just node } (maybeSucc ErrorSync))
             (DS parent DefaultSync) -> Right
@@ -444,7 +449,7 @@ buildTree state@{buildStack: stack} Up = -- command to merge node to parent
     in  case topAstStack stack of 
             Nothing -> Left $ "Invalid request to go up when there was nothing in the stack"
             Just element -> case topAstStack popped of 
-                Nothing -> Left $ "Invalid request to go up from (" <> show element <> ") when there was no parent in the stack"
+                Nothing -> Right state -- going up with one element is a no-op
                 Just parent -> case mergeToParent element parent of 
                     Right newTop -> Right $ 
                             { buildStack: replaceAstStack popped newTop

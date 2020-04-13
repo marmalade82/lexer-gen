@@ -20,7 +20,7 @@ import Data.List.Lazy as LL
 import Data.Map (Map, fromFoldable, lookup)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
-import ParserAST (BuildCommand(..), TreeBuildState, buildTree, emptyBuildState, extract)
+import ParserAST (BuildCommand(..), TreeBuildState, AstStack, buildTree, emptyBuildState, extract)
 import ParserTypes (AST(..), DerivationType(..), TokenType(..), Token, equals)
 
 
@@ -148,7 +148,7 @@ doParse ts =
                                     then do -- We're done with the current token and leftmost symbol. It's time to use it to build
                                         withDeriv <- buildTree state.astBuildState $ AddDerivation leftmost
                                         withMatch <- buildTree withDeriv $ Match token
-                                        newBuildState <- buildTree withMatch $ Next
+                                        newBuildState <- buildTree withMatch $ Up -- matching a token always results in going up
                                         pure $ state { stack = popped, astBuildState = newBuildState }
                                     else 
                                         Left $ "Terminal " <> show current <> " did not match " <> show leftmost

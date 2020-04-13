@@ -64,7 +64,7 @@ type TestStringResult =
     }
 
 data AST
-    = NProgram AST (Maybe AST) (Maybe AST)
+    = NProgram (Maybe AST) (Maybe AST) (Maybe AST)
     | NNormalSpecs (Array (AST))
     | NErrorSpecs (Array (AST))
     | NDefaultSpecs (Array (AST))
@@ -85,7 +85,7 @@ instance showAST :: Show AST where
             doString ast depth = case ast of 
                     NProgram n e d -> 
                         let nString :: TestStringResult
-                            nString = doString n depth
+                            nString = maybeDoString n depth
 
                             eString :: TestStringResult
                             eString = maybeDoString e depth
