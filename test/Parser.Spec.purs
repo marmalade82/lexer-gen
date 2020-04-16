@@ -85,7 +85,7 @@ headerSpec = describe "Headers" do
 normalSectionSpec :: Spec Unit
 normalSectionSpec = describe "Normal section" do 
     parseSpec
-    --astSpec
+    astSpec
 
     where 
         parseSpec :: Spec Unit
@@ -112,13 +112,13 @@ normalSectionSpec = describe "Normal section" do
                         singleton NormalHeader `appendArray`
                             [ Name, Regex, Terminator, EOF ]
                 let result = asTestString $ parse tokens
-                result `shouldEqual` "p,nh,n-r"
+                result `shouldEqual` "p,nh,ns,n-r"
             it "Two specs" do
                 let tokens = makeBasicToken <$>
                         singleton NormalHeader `appendArray`
                             [ Name, Regex, Terminator, Name, Regex, Terminator, EOF ]
                 let result = asTestString $ parse tokens
-                result `shouldEqual` "p,nh,n-r!n-r"
+                result `shouldEqual` "p,nh,ns,n-r!ns,n-r"
 
 errorSectionSpec :: Spec Unit
 errorSectionSpec = describe "Error section" do 

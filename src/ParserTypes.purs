@@ -113,14 +113,31 @@ instance showAST :: Show AST where
                             
                             de = (resultDepth children)
                             str = "eh" <> (if de > 1 then "," else "") <> (joinNonEmpty children)
-                        in makeResult str de
+                        in  makeResult str de
                     NDefaultSpecs arr ->
                         let children :: Array TestStringResult
                             children = (flip doString $ depth) <$> arr
 
                             de = (resultDepth children)
                             str = "dh" <> (if de > 1 then "," else "") <> (joinNonEmpty children)
-                        in makeResult str de
+                        in  makeResult str de
+                    NNormalSpec name regex -> 
+                        let nString :: TestStringResult
+                            nString = doString name depth
+
+                            rString :: TestStringResult
+                            rString = doString regex depth
+
+                            children :: Array TestStringResult 
+                            children = [nString, rString]
+
+                            de = resultDepth children
+                            str = "ns" <>  (if de > 1 then "," else "") <> (joinNonEmpty children)
+                        in  makeResult str de
+
+                    NName tok -> makeResult "n" 1
+                    NRegex tok -> makeResult "r" 1
+                    NErrorMessage tok -> makeResult "em" 1
                     _ -> makeResult "" 0
                     where 
                         resultDepth :: Array TestStringResult -> Int
