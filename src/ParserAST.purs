@@ -85,8 +85,11 @@ toAst {normal: normalSec, error: errorSec, default: defaultSec} = do
                 makeErrorSpec {name: name, error: error, sync: sync} = do
                     name_ <- makeName name
                     error_ <- makeErrorMessage error
-                    sync_ <- makeRegex sync
-                    pure $ NErrorSpec name_ error_ (Just sync_)
+                    let sync_ = case makeName sync of 
+                            Left _ -> Nothing
+                            Right node -> Just node
+                    --sync_ <- makeName sync -- this is optional, so I should make it optional
+                    pure $ NErrorSpec name_ error_ sync_
 
 
         makeDefaultSpecs :: Maybe DefaultSpecs -> Either String (Maybe AST)
@@ -104,8 +107,10 @@ toAst {normal: normalSec, error: errorSec, default: defaultSec} = do
                 makeDefaultSpec :: DefaultSpec -> Either String AST
                 makeDefaultSpec {error: error, sync: sync} = do 
                     error_ <- makeErrorMessage error
-                    sync_ <- makeRegex sync
-                    pure $ NDefaultError error_ (Just sync_)
+                    let sync_ = case makeName sync of 
+                            Left _ -> Nothing
+                            Right node -> Just node
+                    pure $ NDefaultError error_ sync_
 
 
         makeName :: Maybe Name -> Either String AST
@@ -206,7 +211,7 @@ instance enumErrorSpecsLens :: Enum ErrorSpecsLens where
 type ErrorSpec = 
     { name :: Maybe Name
     , error :: Maybe ErrorMessage
-    , sync :: Maybe Regex
+    , sync :: Maybe Name
     }
 
 data ErrorSpecLens
@@ -340,18 +345,22 @@ instance parentAstStackElement :: Parent AstStackElement where
                 _ -> p
     mergeToParent child (Placeholder arr) = Right $ Placeholder (snoc arr child) -- we store the child in the placeholder
     mergeToParent prog@(P node lens) p = Left $ "Program " <> show prog <> " is supposed to be top. Could not merge into (" <> show p <> ")"
-    mergeToParent (NSS node lens) p = 
+    mergeToParent (NSS node@{specs: childspecs } lens) p = 
         let nextLens = maybeSucc lens 
         in  case p of 
                 (P parent NormalSpecs_) -> Right $ (P parent { normal = Just node } (maybeSucc NormalSpecs_))
+                (NSS parent@{specs: specs_ } ArrayNormalSpecs) -> Right $ (NSS parent {specs = specs_ <> childspecs } (maybeSucc ArrayNormalSpecs ))
                 _ -> invalidParentError p node
     mergeToParent (NS node lens) p = 
         case p of 
             (NSS parent ArrayNormalSpecs ) -> Right $ (NSS parent { specs = (snoc parent.specs node) } (maybeSucc ArrayNormalSpecs))
             _ -> invalidParentError p node
-    mergeToParent (ESS node lens) p = case p of
+    mergeToParent (ESS node@{specs: childspecs } lens) p = case p of
             (P parent ErrorSpecs_) -> Right $ 
                 (P parent { error = Just node } $ (maybeSucc ErrorSpecs_) )
+            (P parent NormalSpecs_) -> Right $ 
+                (P parent { error = Just node } $ (maybeSucc ErrorSpecs_))
+            (ESS parent@{specs: specs_} ArrayErrorSpecs) -> Right $ (ESS parent {specs = specs_ <> childspecs} (maybeSucc ArrayErrorSpecs))
             _ -> invalidParentError p node
     mergeToParent (ES node lens) p = case p of 
             (ESS parent ArrayErrorSpecs) -> Right $ 
@@ -359,6 +368,10 @@ instance parentAstStackElement :: Parent AstStackElement where
             _ -> invalidParentError p node
     mergeToParent (DSS node lens) p = case p of 
             (P parent DefaultSpecs_) -> Right $ 
+                (P parent { default = Just node} (maybeSucc DefaultSpecs_))
+            (P parent ErrorSpecs_) -> Right $ 
+                (P parent { default = Just node} (maybeSucc DefaultSpecs_))
+            (P parent NormalSpecs_) -> Right $ 
                 (P parent { default = Just node} (maybeSucc DefaultSpecs_))
             _ -> invalidParentError p node
     mergeToParent (DS node lens) p = case p of
@@ -370,6 +383,10 @@ instance parentAstStackElement :: Parent AstStackElement where
                 (NS parent { name = Just node } (maybeSucc NormalName) )
             (ES parent ErrorName) -> Right $ 
                 (ES parent { name = Just node } (maybeSucc ErrorName) )
+            (ES parent ErrorSync) -> Right $ 
+                (ES parent { sync = Just node } (maybeSucc ErrorSync) )
+            (DS parent DefaultSync) -> Right $ 
+                (DS parent { sync = Just node } (maybeSucc DefaultSync))
             _ -> invalidParentError p node
     mergeToParent (R node lens) p = case p of
             (NS parent NormalRegex) -> Right

@@ -96,30 +96,30 @@ instance showAST :: Show AST where
                             children :: Array TestStringResult
                             children = [nString, eString, dString]
 
-                            str = "p," <> (joinNonEmpty children)
                             de = (resultDepth children)
+                            str = "p" <> (if de > 1 then "," else "") <> (joinNonEmpty children)
                         in  makeResult str de
                         
                     NNormalSpecs arr -> 
                         let children :: Array TestStringResult
                             children = (flip doString $ depth) <$> arr
 
-                            str = "nh," <> (joinNonEmpty children)
                             de = (resultDepth children)
+                            str = "nh" <> (if de > 1 then "," else "") <> (joinNonEmpty children)
                         in  makeResult str de
                     NErrorSpecs arr ->
                         let children :: Array TestStringResult
                             children = (flip doString $ depth) <$> arr
                             
-                            str = "eh," <> (joinNonEmpty children)
                             de = (resultDepth children)
+                            str = "eh" <> (if de > 1 then "," else "") <> (joinNonEmpty children)
                         in makeResult str de
                     NDefaultSpecs arr ->
                         let children :: Array TestStringResult
                             children = (flip doString $ depth) <$> arr
 
-                            str = "dh," <> (joinNonEmpty children)
                             de = (resultDepth children)
+                            str = "dh" <> (if de > 1 then "," else "") <> (joinNonEmpty children)
                         in makeResult str de
                     _ -> makeResult "" 0
                     where 
