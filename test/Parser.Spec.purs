@@ -15,6 +15,7 @@ spec = describe "Parsing" do
     headerSpec 
     normalSectionSpec
     errorSectionSpec
+    combinedSectionSpec
     defaultSectionSpec
     errorSpec
     stringSpec
@@ -209,6 +210,108 @@ defaultSectionSpec = describe "Default section" do
                             ]
                 let result = asTestString $ parse tokens
                 result `shouldEqual` "p,dh,de,em-n"
+
+combinedSectionSpec :: Spec Unit
+combinedSectionSpec = describe "Combined sections are parsed correctly" do 
+    parseSpec
+    astSpec
+
+    where
+        parseSpec :: Spec Unit
+        parseSpec = describe "parse" do
+            it "Normal and error" do
+                let tokens = makeBasicToken <$>
+                        singleton NormalHeader `appendArray` 
+                            [   Name, Regex, Terminator
+                            , ErrorHeader
+                            ,   Name, ErrorMessage, Terminator
+                            , EOF
+                            ]
+                let result = parse tokens
+                asErrors result `shouldEqual` []
+                asSuccess result `shouldEqual` true
+            it "Normal and default" do
+                let tokens = makeBasicToken <$>
+                        singleton NormalHeader `appendArray` 
+                            [   Name, Regex, Terminator
+                            , DefaultHeader
+                            ,   Default, ErrorMessage, Terminator
+                            , EOF
+                            ]
+                let result = parse tokens
+                asErrors result `shouldEqual` []
+                asSuccess result `shouldEqual` true
+            it "Error and default" do 
+                let tokens = makeBasicToken <$>
+                        singleton NormalHeader `appendArray` 
+                            [ ErrorHeader
+                            ,   Name, ErrorMessage, Terminator
+                            , DefaultHeader
+                            ,   Default, ErrorMessage, Terminator
+                            , EOF
+                            ]
+                let result = parse tokens
+                asErrors result `shouldEqual` []
+                asSuccess result `shouldEqual` true
+            it "Normal, error default" do
+                let tokens = makeBasicToken <$>
+                        singleton NormalHeader `appendArray` 
+                            [   Name, Regex, Terminator
+                            , ErrorHeader
+                            ,   Name, ErrorMessage, Terminator
+                            , DefaultHeader
+                            ,   Default, ErrorMessage, Terminator
+                            , EOF
+                            ]
+                let result = parse tokens
+                asErrors result `shouldEqual` []
+                asSuccess result `shouldEqual` true
+
+        astSpec :: Spec Unit
+        astSpec = describe "ast" do 
+            it "Normal and error" do
+                let tokens = makeBasicToken <$>
+                        singleton NormalHeader `appendArray` 
+                            [   Name, Regex, Terminator
+                            , ErrorHeader
+                            ,   Name, ErrorMessage, Terminator
+                            , EOF
+                            ]
+                let result = asTestString $ parse tokens
+                result `shouldEqual` "p,nh,ns,n-r!!eh,es,n-em"
+            it "Normal and default" do
+                let tokens = makeBasicToken <$>
+                        singleton NormalHeader `appendArray` 
+                            [   Name, Regex, Terminator
+                            , DefaultHeader
+                            ,   Default, ErrorMessage, Terminator
+                            , EOF
+                            ]
+                let result = asTestString $ parse tokens
+                result `shouldEqual` "p,nh,ns,n-r!!dh,de,em"
+            it "Error and default" do 
+                let tokens = makeBasicToken <$>
+                        singleton NormalHeader `appendArray` 
+                            [ ErrorHeader
+                            ,   Name, ErrorMessage, Terminator
+                            , DefaultHeader
+                            ,   Default, ErrorMessage, Terminator
+                            , EOF
+                            ]
+                let result = asTestString $ parse tokens
+                result `shouldEqual` "p,eh,es,n-em!!dh,de,em"
+            it "Normal, error default" do
+                let tokens = makeBasicToken <$>
+                        singleton NormalHeader `appendArray` 
+                            [   Name, Regex, Terminator
+                            , ErrorHeader
+                            ,   Name, ErrorMessage, Terminator
+                            , DefaultHeader
+                            ,   Default, ErrorMessage, Terminator
+                            , EOF
+                            ]
+                let result = asTestString $ parse tokens
+                result `shouldEqual` "p,nh,ns,n-r!!eh,es,n-em!!dh,de,em"
 
 errorSpec :: Spec Unit
 errorSpec = describe "Error messages are reported" do
