@@ -134,11 +134,38 @@ instance showAST :: Show AST where
                             de = resultDepth children
                             str = "ns" <>  (if de > 1 then "," else "") <> (joinNonEmpty children)
                         in  makeResult str de
+                    NErrorSpec name error msync -> 
+                        let nString :: TestStringResult
+                            nString = doString name depth
 
+                            eString :: TestStringResult
+                            eString = doString error depth
+
+                            sString :: TestStringResult
+                            sString = maybeDoString msync depth
+
+                            children :: Array TestStringResult
+                            children = [nString, eString, sString]
+
+                            de = resultDepth children
+                            str = "es" <> (if de > 1 then "," else "") <> (joinNonEmpty children)
+                        in  makeResult str de
+                    NDefaultError error msync ->
+                        let eString :: TestStringResult
+                            eString = doString error depth
+
+                            sString :: TestStringResult
+                            sString = maybeDoString msync depth
+
+                            children :: Array TestStringResult
+                            children = [eString, sString]
+
+                            de = resultDepth children
+                            str = "de" <> (if de > 1 then "," else "") <> (joinNonEmpty children)
+                        in  makeResult str de
                     NName tok -> makeResult "n" 1
                     NRegex tok -> makeResult "r" 1
                     NErrorMessage tok -> makeResult "em" 1
-                    _ -> makeResult "" 0
                     where 
                         resultDepth :: Array TestStringResult -> Int
                         resultDepth children = -- we add 1, for the current level, to the depth of the child levels

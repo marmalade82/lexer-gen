@@ -16,7 +16,7 @@ spec = describe "Parsing" do
     normalSectionSpec
     errorSectionSpec
     defaultSectionSpec
-    --errorSpec
+    errorSpec
     stringSpec
 
 headerSpec :: Spec Unit
@@ -123,7 +123,7 @@ normalSectionSpec = describe "Normal section" do
 errorSectionSpec :: Spec Unit
 errorSectionSpec = describe "Error section" do 
     parseSpec
-    --astSpec
+    astSpec
 
     where 
         parseSpec :: Spec Unit
@@ -153,7 +153,7 @@ errorSectionSpec = describe "Error section" do
                         singleton NormalHeader `appendArray`
                             [ ErrorHeader, Name, ErrorMessage, Name, Terminator, EOF]
                 let result = asTestString $ parse tokens
-                result `shouldEqual` "p,nh-eh,n-em-n"
+                result `shouldEqual` "p,eh,es,n-em-n"
             it "Two specs" do 
                 let tokens = makeBasicToken <$>
                         singleton NormalHeader `appendArray`
@@ -162,12 +162,12 @@ errorSectionSpec = describe "Error section" do
                             , Name, ErrorMessage, Terminator, EOF
                             ]
                 let result = asTestString $ parse tokens
-                result `shouldEqual` "p,nh-eh,es,n-em-n!es,n-em"
+                result `shouldEqual` "p,eh,es,n-em-n!es,n-em"
 
 defaultSectionSpec :: Spec Unit
 defaultSectionSpec = describe "Default section" do 
     parseSpec
-    --astSpec
+    astSpec
 
     where 
         parseSpec :: Spec Unit
@@ -200,7 +200,7 @@ defaultSectionSpec = describe "Default section" do
                             , Default, ErrorMessage, Terminator, EOF
                             ]
                 let result = asTestString $ parse tokens
-                result `shouldEqual` "p,nh-eh-dh,d-em"
+                result `shouldEqual` "p,dh,de,em"
             it "One spec with sync" do
                 let tokens = makeBasicToken <$>
                         singleton NormalHeader `appendArray`
@@ -208,7 +208,7 @@ defaultSectionSpec = describe "Default section" do
                             , Default, ErrorMessage, Name, Terminator, EOF
                             ]
                 let result = asTestString $ parse tokens
-                result `shouldEqual` "p,nh-eh-dh,d-em-n"
+                result `shouldEqual` "p,dh,de,em-n"
 
 errorSpec :: Spec Unit
 errorSpec = describe "Error messages are reported" do
