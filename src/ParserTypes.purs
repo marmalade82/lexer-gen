@@ -203,7 +203,7 @@ instance showAST :: Show AST where
                                 else 
                                     let sep =   if res.depth < 2
                                                 then "-"
-                                                else "!"
+                                                else Str.joinWith "" $ Array.replicate (res.depth - 1) "!"
                                     in  acc <> sep <> res.str
             maxDepth :: Array TestStringResult -> Int
             maxDepth arr = 
