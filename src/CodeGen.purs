@@ -10,10 +10,12 @@ import Prelude
 
 import Control.Monad.Trans.Class (lift)
 import Data.Array (head, last, length, take, index)
+import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
+import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.String as Str
 import Data.Traversable (sequence)
@@ -60,10 +62,30 @@ instance eqTokenType :: Eq TokenType where eq = genericEq
 
 
 generate :: GenAST -> String
-generate ast = evalState (doGenerate $ Just ast) ""
+generate ast = evalState (doGenerate $ Just ast) { program: "", names: Map.empty, errors: Map.empty }
 
-type CodeState a = State String a
+type Context = 
+    { program :: String
+    , names :: Map.Map String Unit
+    , errors :: Map.Map String String
+    }
 
+type CodeState a = State Context a
+
+updateNames :: Token -> CodeState Unit
+updateNames tok = do 
+    ctx <- get 
+    put $ ctx { names = Map.insert tok.lexeme unit ctx.names }
+
+updateErrors :: String -> String -> CodeState Unit
+updateErrors name message = do 
+    ctx <- get
+    put $ ctx { errors = Map.insert name message ctx.errors }
+
+updateProgram :: String -> CodeState Unit
+updateProgram next = do 
+    ctx <- get
+    put $ ctx { program = ctx.program <> "\n" <> next }
 
 -- generation should really lead to the emmision of strings to a file, line by line. Running
 -- the file for its effects should determine whether the test passes or fails.
@@ -128,7 +150,9 @@ doGenerate (Just ast) = do
                 generated = do 
                     name <- generateName $ head arr
                     regex <- generateRegex $ (eHead 2) arr
-                    makeMatcher name regex
+                    matcher <- makeMatcher name regex
+                    updateProgram matcher
+                    pure ""
             in  generated
         ErrorSpec arr -> 
             let generated :: CodeState String
@@ -137,38 +161,83 @@ doGenerate (Just ast) = do
                     message <- generateMessage $ (eHead 2) arr
                     sync <- generateName $ (eHead 3) arr
                     makeError name message sync
+                    updateProgram makeError
+                    pure ""
             in  generated
         DefaultError arr -> 
             let generated :: CodeState String
                 generated = do
                     message <- generateMessage $ head arr
                     sync <- generateName $ (eHead 2) arr
-                    makeError "$default" message sync
+                    makeError "_default" message sync
+                    updateProgram makeError
+                    pure ""
             in  generated
 
-        -- Leaf nodes lack context. Without context, there's no point to generating code.
-        Name tok -> pure "" 
+        
+        Name tok -> do 
+            updateNames tok
+            pure "" 
         Regex tok -> pure ""
         ErrorMessage tok -> pure ""
 
     where 
         generateName :: Maybe GenAST -> CodeState String
-        generateName (Just (Name tok)) = pure ""
+        generateName (Just (Name tok)) = pure tok.lexeme
         generateName _ = pure ""
 
         generateRegex :: Maybe GenAST -> CodeState String
-        generateRegex (Just (Regex tok)) = pure ""
+        generateRegex (Just (Regex tok)) = pure $ "new RegExp(" <> tok.lexeme <> ")"
         generateRegex _ = pure ""
 
         makeMatcher :: String -> String -> CodeState String
-        makeMatcher name regex = pure ""
+        makeMatcher name regex = pure $ Str.joinWith "\n"
+            [ declareConst name regex
+            , function ("match" <> name) ["str"] 
+                [ declareConst "matches" ("str.match(" <> name <> ");")
+                , return $ ternary "matches.length > 0" "matches[0]" "null"
+                ]
+            ]
 
         generateMessage :: Maybe GenAST -> CodeState String
-        generateMessage (Just (ErrorMessage tok)) = pure ""
+        generateMessage (Just (ErrorMessage tok)) = pure tok.lexeme
         generateMessage _ = pure ""
 
+        -- describes what happens when a particular token matches an error
         makeError :: String -> String -> String -> CodeState String
-        makeError name message sync = pure ""
+        makeError name message sync = pure $ Str.joinWith "\n"
+            -- to recover, push the error message into the global list of errors, and then 
+            -- discard the input string until we match the sync token, if it exists
+            [ function ("error" <> name) ["str"]
+                [ "errors.push(" <> message <> ");"
+                , declareLet "rem" "''"
+                , declareConst "sync" ("matchers['" <> name <> "']")
+                , ifExpr "sync" <> thenExpr "rem = discardUntil(" <> "str, sync" <> ");"
+                , return "rem"
+                ]
+            ]
 
 eHead :: forall a. Int -> Array a -> Maybe a
 eHead = flip index
+
+declareConst :: String -> String -> String
+declareConst name expr = 
+    "const " <> name <> " = " <> expr <> ";"
+
+function :: String -> Array String -> Array String -> String
+function name args body = 
+    let args_ = Str.joinWith ", " args
+        body_ = Str.joinWith "\n" body
+    in  Str.joinWith "\n" 
+            [ "function " <> name <> "(" <> args_ <> ") {"
+            , body_
+            , "}"
+            ]
+
+return :: String -> String
+return expr = 
+    "return " <> expr <> ";"
+
+ternary :: String -> String -> String -> String
+ternary test t f = 
+    test <> " ? " <> t <> " : " <> f <> ";"
