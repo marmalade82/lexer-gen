@@ -64,10 +64,13 @@ instance eqTokenType :: Eq TokenType where eq = genericEq
 generate :: GenAST -> String
 generate ast = evalState (doGenerate $ Just ast) { program: "", names: Map.empty, errors: Map.empty }
 
+type TokenNamesStore = Map.Map String Unit
+type ErrorStore = Map.Map String String
+
 type Context = 
     { program :: String
-    , names :: Map.Map String Unit
-    , errors :: Map.Map String String
+    , names :: TokenNamesStore
+    , errors :: ErrorStore
     }
 
 type CodeState a = State Context a
@@ -97,27 +100,86 @@ doGenerate (Just ast) = do
         Program arr ->
             let generated :: CodeState String
                 generated = do 
-                    matchers <- doGenerate $ head arr
-                    errors <- doGenerate $ (eHead 2) arr
-                    defaults <- doGenerate $ (eHead 3) arr
+                    updateProgram helpers
+                    -- we assume that code generation for the first 3 children will generate all the known
+                    -- token-regex-error pairings, that the program can then use to set up the algorithm.
+                    _ <- doGenerate $ head arr
+                    _ <- doGenerate $ (eHead 2) arr
+                    _ <- doGenerate $ (eHead 3) arr
+                    exportTokenTypes_ <- exportTokenTypes -- for use by whatever parser
+                    updateProgram exportTokenTypes_
                     pure $ makeProgram matchers errors defaults
             in  generated
             where
-                -- We also need to make sure that the function definitions make it into the final program.
-                -- This might be a good place to use the State monad, since the state of the program so far is 
-                -- a huge background part of the program
+                -- while the string still has remaining input, we fetch all the 
+                -- possible matchers and try them all, taking the one with maximum munch.
+                -- If the maximum munch is an error, we fetch the corresponding error implementation
+                -- and resync (if specified). We then put the error message in the global
+                -- error message store along with the line and column number
+                -- If the maximum munch is not an error, we build the corresponding token and put 
+                -- it into the the global token store
+                -- Once the string has no more input, we return the errors and tokens
                 makeProgram :: String -> String -> String -> String
                 makeProgram matchers errors defaults = 
                     let prog = 
                             [ "const matchers = {};" 
                             , "const errors = {};"
-                            , "\n"
-                            , "export function lex(str) {"
-
-                            , "};"
+                            , "export " <> function "lex" ["str"]
+                                [ declareConst "tokens" "[]"
+                                , declareConst "errors" "[]"
+                                , declareConst "line" "0"
+                                , declareConst "column" "0"
+                                , while $ call "inputRemains" ["str"]
+                                    [ declareLet "maxMunch" "doMaxMunch(str, line, column)"
+                                    , ifExpr $ call "isError" ["maxMunch"] 
+                                    , thenExpr
+                                        [ assign "maxMunch" $ call "trySync" ["str" "maxMunch"]
+                                        , call "publishError" ["maxMunch", "errors"]
+                                        ]
+                                    , elseExpr 
+                                        [ call "publishToken" ["maxMunch", "tokens"]
+                                        ]
+                                    , assign "line" $ call "newLine" ["maxMunch" "line"]
+                                    , assign "column" $ call "newColumn" ["maxMunch" "column"]
+                                    ]
+                                , return $ obj
+                                    [ "tokens", "tokens"
+                                    , "errors", "errors"
+                                    ]
+                                ]
                             , "export default lex;"
                             ]
                     in  Str.joinWith "\n" prog 
+                helpers :: String
+                helpers = Str.joinWith "\n"
+                    [ comment 
+                        [ "This function discards characters from the input string until"
+                        , "the regex matches the syncing regex. Lexing should restart from"
+                        , "there"
+                        ]
+                    , function "discardUntil" ["str", "sync"]
+                        [ declareLet "search" "str"
+                        , while ("!str.test(" <> "sync" <> ") && str.length > 0")
+                            [ "search = str.slice(1);"
+                            ]
+                        , return "search"
+                        ]
+                    ]
+                -- generates code for exporting token types that are 
+                -- currently in the state
+                exportTokenTypes :: CodeState String
+                exportTokenTypes = do
+                    ctx <- get 
+                    let tokens = ctx.names
+                        exports = doExport tokens
+                    pure $ Str.joinWith "\n" exports
+
+                    where 
+                        doExport :: TokenNamesStore -> Array String
+                        doExport store = 
+                            let keys = Map.keys store
+                            in  (flip map) keys (\key -> "export " <> declareConst key key <> ";")
+
         NormalSpecs arr ->
             let mapped :: (CodeState (Array String))
                 mapped = sequence (doGenerate <$> (Just <$> arr))
@@ -160,8 +222,8 @@ doGenerate (Just ast) = do
                     name <- generateName $ head arr
                     message <- generateMessage $ (eHead 2) arr
                     sync <- generateName $ (eHead 3) arr
-                    makeError name message sync
-                    updateProgram makeError
+                    fullError <- makeError name message sync
+                    updateProgram fullError
                     pure ""
             in  generated
         DefaultError arr -> 
@@ -169,8 +231,8 @@ doGenerate (Just ast) = do
                 generated = do
                     message <- generateMessage $ head arr
                     sync <- generateName $ (eHead 2) arr
-                    makeError "_default" message sync
-                    updateProgram makeError
+                    fullError <- makeError "_default" message sync
+                    updateProgram fullError
                     pure ""
             in  generated
 
@@ -212,7 +274,7 @@ doGenerate (Just ast) = do
                 [ "errors.push(" <> message <> ");"
                 , declareLet "rem" "''"
                 , declareConst "sync" ("matchers['" <> name <> "']")
-                , ifExpr "sync" <> thenExpr "rem = discardUntil(" <> "str, sync" <> ");"
+                , ifExpr "sync" <> thenExpr ["rem = discardUntil(" <> "str, sync" <> ");"]
                 , return "rem"
                 ]
             ]
@@ -223,6 +285,30 @@ eHead = flip index
 declareConst :: String -> String -> String
 declareConst name expr = 
     "const " <> name <> " = " <> expr <> ";"
+
+declareLet :: String -> String -> String
+declareLet name expr =
+    "let " <> name <> " = " <> expr <> ";"
+
+ifExpr :: String -> String
+ifExpr expr = 
+    "if(" <> expr <> ")"
+
+thenExpr :: Array String -> String
+thenExpr body = Str.joinWith "\n"
+    let body_ = Str.joinWith "\n" body
+    in  [ "{"
+        , body_
+        , "}"
+        ]
+
+elseExpr :: Array String -> String
+elseExpr body = Str.joinWith "\n"
+    let body_ = Str.joinWith "\n" body
+    in  [ "else {"
+        , body_
+        , "}"
+        ]
 
 function :: String -> Array String -> Array String -> String
 function name args body = 
@@ -241,3 +327,51 @@ return expr =
 ternary :: String -> String -> String -> String
 ternary test t f = 
     test <> " ? " <> t <> " : " <> f <> ";"
+
+comment :: Array String -> String
+comment body = 
+    let body_ = Str.joinWith "\n * " body
+    in  Str.joinWith "\n * "
+            [ "/*"
+            , body_
+            , "*/"
+            ]
+
+while :: String -> Array String -> String
+while cond body = 
+    let body_ = Str.joinWith "\n" body
+    in  Str.joinWith "\n"
+            [ "while(" <> cond <> "){"
+            , body_
+            , "}"
+            ]
+
+assign :: String -> String -> String
+assign var val = 
+    var <> " = " <> val <> ";"
+
+call :: String -> Array String -> String
+call fn args = 
+    fn <> "(" <> (Str.joinWith ", " args) <> ")"
+
+obj :: Array String -> String
+obj key_values = 
+    let _key_values = Str.joinWith ",\n" $ (flip map) (group key_values 2) (\kv -> Str.joinWith ": " kv)
+    in  Str.joinWith "\n"
+            [ "{"
+            , _key_values
+            , "}"
+            ]
+    where 
+        group :: Array String -> Int -> Array String
+        group arr count = doGroup arr count []
+            where 
+                doGroup :: Array String -> Int -> Array String -> Array String
+                doGroup arr count acc =
+                    if  Array.length arr < count then 
+                        acc
+                    else 
+                        let dropped = Array.drop count arr
+                            newGroup = Array.take count arr
+                        in  doGroup dropped count (Array.cons newGroup acc)
+
