@@ -108,7 +108,7 @@ doGenerate (Just ast) = do
                     _ <- doGenerate $ (eHead 3) arr
                     exportTokenTypes_ <- exportTokenTypes -- for use by whatever parser
                     updateProgram exportTokenTypes_
-                    pure $ makeProgram matchers errors defaults
+                    pure $ makeProgram "" "" ""
             in  generated
             where
                 -- while the string still has remaining input, we fetch all the 
@@ -122,25 +122,19 @@ doGenerate (Just ast) = do
                 makeProgram :: String -> String -> String -> String
                 makeProgram matchers errors defaults = 
                     let prog = 
-                            [ "const matchers = {};" 
-                            , "const errors = {};"
-                            , "export " <> function "lex" ["str"]
-                                [ declareConst "tokens" "[]"
+                            [ 
+                              "export " <> function "lex" ["input"]
+                                [ declareLet "str" "input"
+                                , declareConst "tokens" "[]"
                                 , declareConst "errors" "[]"
                                 , declareConst "line" "0"
                                 , declareConst "column" "0"
-                                , while $ call "inputRemains" ["str"]
+                                , while (call "inputRemains" ["str"])
                                     [ declareLet "maxMunch" "doMaxMunch(str, line, column)"
-                                    , ifExpr $ call "isError" ["maxMunch"] 
-                                    , thenExpr
-                                        [ assign "maxMunch" $ call "trySync" ["str" "maxMunch"]
-                                        , call "publishError" ["maxMunch", "errors"]
-                                        ]
-                                    , elseExpr 
-                                        [ call "publishToken" ["maxMunch", "tokens"]
-                                        ]
-                                    , assign "line" $ call "newLine" ["maxMunch" "line"]
-                                    , assign "column" $ call "newColumn" ["maxMunch" "column"]
+                                    , assign "str" "str.slice(maxMunch.lexeme.length)"
+                                    , call "publish" ["maxMunch", "tokens", "errors"]
+                                    , assign "line" $ call "newLine" ["maxMunch", "line"]
+                                    , assign "column" $ call "newColumn" ["maxMunch", "column"]
                                     ]
                                 , return $ obj
                                     [ "tokens", "tokens"
@@ -152,7 +146,41 @@ doGenerate (Just ast) = do
                     in  Str.joinWith "\n" prog 
                 helpers :: String
                 helpers = Str.joinWith "\n"
-                    [ comment 
+                    [ comment
+                        [ "This function calculates the new line position by looking at the lexeme"
+                        , "and counting the number of newlines in it"
+                        ]
+                    , function "newLine" ["munch", "oldLine"] 
+                        [ declareLet "count" "0"
+                        , "for(let i = 0; i < munch.lexeme.length; i++){"
+                        , ifExpr "munch.lexeme[i] === '\\n'"
+                        , thenExpr ["count++"]
+                        , return $ "oldLine + count"
+                        , "}"
+                        ]
+                    , comment 
+                        [ "This function calculates the new column position by looking at the lexeme"
+                        , "and finding the number of characters AFTER the last newline"
+                        ]
+                    , function "newColumn" ["munch", "oldCol"] 
+                        [ declareLet "index" "munch.lexeme.length"
+                        , declareLet "foundNewline" "false"
+                        , while "index > 0 && !foundNewline"
+                            [ "index--"
+                            , ifExpr "munch.lexeme[index] === '\\n'"
+                            , thenExpr 
+                                [ assign "foundNewline" "true"
+                                , "break;"
+                                ]
+                            ]
+                        , ifExpr "foundNewline"
+                        , thenExpr [ return $ "munch.lexeme.length - index - 1"]
+                        , elseExpr [ return $ "oldCol + munch.lexeme.length"]
+                        ]
+                    , function "inputRemains" ["str"]
+                        [ return "str.length > 0"
+                        ]
+                    , comment 
                         [ "This function discards characters from the input string until"
                         , "the regex matches the syncing regex. Lexing should restart from"
                         , "there"
@@ -163,6 +191,87 @@ doGenerate (Just ast) = do
                             [ "search = str.slice(1);"
                             ]
                         , return "search"
+                        ]
+                    , "\n"
+                    , comment 
+                        [ "This function runs through all the declared tokens and tries all of them to"
+                        , "find the one with maximum munch. If two or more have the same length, the one"
+                        , "that was declared latest in the lexer-gen file takes priority. Once the maximum"
+                        , "munch is identified, it returns an object containing the token type, the lexeme,"
+                        , "the column number, and the line number"
+                        ]
+                    , function "doMaxMunch" ["str", "line", "column"]
+                        [ declareLet "munch" $ 
+                            --TODO - define matchers array with appropriate matcher functions
+                            "matchers." <> (call "reduce" 
+                                [ function "match" ["acc", "matcher"]
+                                    [ declareConst "result" (call "matcher" ["str"])
+                                    , ifExpr "result !== null"
+                                    , thenExpr 
+                                        [ assign "acc.type" "result.type"
+                                        , assign "acc.lexeme" "result.lexeme"
+                                        ]
+                                    , return "acc"
+                                    ]
+                                , obj   [ "line",      "line" 
+                                        , "column",    "column"
+                                        , "type",      "undefined"
+                                        , "lexeme",    " '' "
+                                        ]
+                                ])
+
+                        , ifExpr $ "munch.type === undefined"
+                        , thenExpr 
+                           -- TODO define the array of error matchers that can optionally sync
+                            [ assign "munch" $ 
+                                "errors." <> (call "reduce"
+                                    [ function "match" ["acc", "error"]
+                                        [ declareConst "result" (call "error" ["str"])
+                                        , ifExpr "result !== null"
+                                        , thenExpr 
+                                            [ assign "acc.type" "result.type"
+                                            , assign "acc.lexeme" "result.lexeme"
+                                            ]
+                                        , return "acc"
+                                        ]
+                                    , obj   [ "line",      "line" 
+                                            , "column",    "column"
+                                            , "type",      "undefined"
+                                            , "lexeme",    " '' "
+                                            ]
+                                    ])
+                            , ifExpr $ "munch.type === undefined"
+                            , thenExpr
+                                [ "throw new Error('Lexing got stuck! No matchers or errors succeeded! Unexpected'); " ]
+                            ]
+                        , "\n"
+                        , return "munch"
+                        ]
+                    , comment 
+                        [ "This function determines whether a given munch is an error munch or not"
+                        ]
+                    , function "isError" ["munch"]
+                        -- TODO: define the errorLookup object for quick lookup of whether a token is an error
+                        [ return "errorLookup[munch.type.toString()] !== undefined"
+                        ]
+                    
+                    , function "publish" ["munch", "tokens", "errors"]
+                        [ ifExpr $ call "isError" ["munch"] 
+                        , thenExpr
+                            [ call "publishError" ["munch", "errors"]
+                            ]
+                        , elseExpr 
+                            [ call "publishToken" ["munch", "tokens"]
+                            ]
+                        , function "publishError" ["munch", "errors"]
+                            [ (<>) "errors." $ call "push" 
+                                -- TODO define lookupError
+                                [ "`line ${munch.line}, column ${munch.column}: ${lookupError(munch.type)}`"
+                                ]
+                            ]
+                        , function "publishToken" ["munch", "tokens"]
+                            [ (<>) "tokens." $ call "push" [ "munch" ]
+                            ]
                         ]
                     ]
                 -- generates code for exporting token types that are 
@@ -177,7 +286,8 @@ doGenerate (Just ast) = do
                     where 
                         doExport :: TokenNamesStore -> Array String
                         doExport store = 
-                            let keys = Map.keys store
+                            let keys :: Array String
+                                keys = Array.fromFoldable $ Map.keys store
                             in  (flip map) keys (\key -> "export " <> declareConst key key <> ";")
 
         NormalSpecs arr ->
@@ -252,6 +362,8 @@ doGenerate (Just ast) = do
         generateRegex (Just (Regex tok)) = pure $ "new RegExp(" <> tok.lexeme <> ")"
         generateRegex _ = pure ""
 
+        -- TODO : this is wrong. Token name and regex should be written into State so that we 
+        -- can later define an array of token matchers
         makeMatcher :: String -> String -> CodeState String
         makeMatcher name regex = pure $ Str.joinWith "\n"
             [ declareConst name regex
@@ -266,6 +378,9 @@ doGenerate (Just ast) = do
         generateMessage _ = pure ""
 
         -- describes what happens when a particular token matches an error
+        -- TODO : this is wrong. Error should be written into State so that we 
+        -- can later define an array of error matchers, a lookup table of error tokens,
+        -- and a way to look up an error message based on the error type
         makeError :: String -> String -> String -> CodeState String
         makeError name message sync = pure $ Str.joinWith "\n"
             -- to recover, push the error message into the global list of errors, and then 
@@ -363,10 +478,10 @@ obj key_values =
             , "}"
             ]
     where 
-        group :: Array String -> Int -> Array String
+        group :: Array String -> Int -> Array (Array String)
         group arr count = doGroup arr count []
             where 
-                doGroup :: Array String -> Int -> Array String -> Array String
+                doGroup :: Array String -> Int -> Array (Array String) -> Array (Array String)
                 doGroup arr count acc =
                     if  Array.length arr < count then 
                         acc
