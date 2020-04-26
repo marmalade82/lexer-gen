@@ -19,6 +19,7 @@ import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.String as Str
 import Data.Traversable (sequence)
+import Data.Tuple (Tuple(..) fst, snd)
 
 {-  module for generating code from the AST
     What I've realized is that besides the actual parsing algorithm, very, very few of 
@@ -64,8 +65,8 @@ instance eqTokenType :: Eq TokenType where eq = genericEq
 generate :: GenAST -> String
 generate ast = evalState (doGenerate $ Just ast) { program: "", names: Map.empty, errors: Map.empty }
 
-type TokenNamesStore = Map.Map String Unit
-type ErrorStore = Map.Map String String
+type TokenNamesStore = Map.Map String String -- from token name to regex for it.
+type ErrorStore = Map.Map String (Tuple String (Maybe String)) -- from token name to error message and optional sync
 
 type Context = 
     { program :: String
@@ -108,9 +109,50 @@ doGenerate (Just ast) = do
                     _ <- doGenerate $ (eHead 3) arr
                     exportTokenTypes_ <- exportTokenTypes -- for use by whatever parser
                     updateProgram exportTokenTypes_
+                    matchers <- defineMatchers -- array of matcheres
+                    updateProgram defineMatchers
+                    errors <- defineErrors
+                    updateProgram errors
                     pure $ makeProgram "" "" ""
             in  generated
             where
+                defineMatchers :: CodeState String
+                defineMatchers = do
+                    ctx <- get
+                    let matcherStore = Map.toUnfoldable ctx.names :: Array (Tuple String String)
+                        -- TODO: define makeMatcher
+                        -- TODO: exclude error tokens
+                        matchers = (flip map) matcherStore (\tup -> (fst tup) <> ": " <> (call "makeMatcher" [asToken $ fst tup, snd tup]) ) :: Array String
+                        kv = Str.joinWith ",\n" matchers
+                    pure $ declareConst "matchers" ("{\n" <> kv <> "\n}")
+
+
+                    where 
+                        makeMatcher :: String -> String -> String
+                        makeMatcher name regex = Unit
+                
+                defineErrors :: CodeState String
+                defineErrors = do 
+                    ctx <- get
+                    let regexStore = ctx.names
+                        errorStore = Map.toUnfoldable ctx.errors  :: Array (Tuple String (Tuple String (Maybe String)))
+                        errorMatchers = (flip map) errorStore 
+                            (\tup -> 
+                                -- TODO - define makeError function
+                                (name) <> ": " <> (call "makeError" [asToken $ name, regex, message, sync ]) 
+                                where 
+                                    name = fst tup
+                                    regex = case Map.lookup name regexStore of 
+                                        Nothing -> "undefined"
+                                        Just reg -> reg
+                                    message = fst $ snd tup
+                                    sync = case snd $ snd tup of 
+                                        Nothing -> "undefined"
+                                        Just reg -> reg
+                            )
+                        kv = Str.joinWith ",\n" errorMatchers
+                    pure $ declareConst "errors" ("{\n" <> kv <> "\n}")
+
                 -- while the string still has remaining input, we fetch all the 
                 -- possible matchers and try them all, taking the one with maximum munch.
                 -- If the maximum munch is an error, we fetch the corresponding error implementation
@@ -288,7 +330,7 @@ doGenerate (Just ast) = do
                         doExport store = 
                             let keys :: Array String
                                 keys = Array.fromFoldable $ Map.keys store
-                            in  (flip map) keys (\key -> "export " <> declareConst key key <> ";")
+                            in  (flip map) keys (\key -> "export " <> declareConst (asToken key) key <> ";")
 
         NormalSpecs arr ->
             let mapped :: (CodeState (Array String))
@@ -490,3 +532,5 @@ obj key_values =
                             newGroup = Array.take count arr
                         in  doGroup dropped count (Array.cons newGroup acc)
 
+asToken :: String -> String
+asToken name = name
