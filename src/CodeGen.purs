@@ -11,6 +11,7 @@ import Prelude
 import Control.Monad.Trans.Class (lift)
 import Data.Array (head, last, length, take, index)
 import Data.Array as Array
+import Data.Array (concatMap)
 import Data.Either (Either(..))
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
@@ -19,7 +20,8 @@ import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.String as Str
 import Data.Traversable (sequence)
-import Data.Tuple (Tuple(..) fst, snd)
+import Data.Tuple (Tuple(..), fst, snd)
+
 
 {-  module for generating code from the AST
     What I've realized is that besides the actual parsing algorithm, very, very few of 
@@ -76,11 +78,13 @@ type Context =
 
 type CodeState a = State Context a
 
+-- TODO fix usage. TokenNamesStore type no longer matches
 updateNames :: Token -> CodeState Unit
 updateNames tok = do 
     ctx <- get 
     put $ ctx { names = Map.insert tok.lexeme unit ctx.names }
 
+-- TODO fix usage. ErrorStore type no longer matches
 updateErrors :: String -> String -> CodeState Unit
 updateErrors name message = do 
     ctx <- get
@@ -118,9 +122,9 @@ doGenerate (Just ast) = do
             where
                 defineMatchers :: CodeState String
                 defineMatchers = do
+                    updateProgram makeMatcher
                     ctx <- get
                     let matcherStore = Map.toUnfoldable ctx.names :: Array (Tuple String String)
-                        -- TODO: define makeMatcher
                         -- TODO: exclude error tokens
                         matchers = (flip map) matcherStore (\tup -> (fst tup) <> ": " <> (call "makeMatcher" [asToken $ fst tup, snd tup]) ) :: Array String
                         kv = Str.joinWith ",\n" matchers
@@ -128,19 +132,47 @@ doGenerate (Just ast) = do
 
 
                     where 
-                        makeMatcher :: String -> String -> String
-                        makeMatcher name regex = Unit
+                        -- given name and regex, defines a function that, given the input string,
+                        -- returns object containing token type and lexeme, or null if no match
+                        makeMatcher :: String
+                        makeMatcher tokenName regex = 
+                            function "makeMatcher" ["tokenName", "regex"]
+                                [return $
+                                    function "matcher" ["input"] 
+                                        [ declareConst "result" ("input." $ call "match" [regex])
+                                        , ifExpr "result.length > 0"
+                                        , thenExpr 
+                                            [ return $ obj 
+                                                [ "type", tokenName
+                                                , "lexeme", "result[0]" ]
+                                            ]
+                                        , elseExpr [ return "null" ]
+                                        ]
+                                ]
                 
                 defineErrors :: CodeState String
                 defineErrors = do 
+                    updateProgram makeError
                     ctx <- get
                     let regexStore = ctx.names
                         errorStore = Map.toUnfoldable ctx.errors  :: Array (Tuple String (Tuple String (Maybe String)))
-                        errorMatchers = (flip map) errorStore 
+                        errorLookup = 
+                            let kv = (flip concatMap) errorStore
+                                    (\tup -> 
+                                        let name = fst tup
+                                            message = fst $ snd tup
+                                        in  [name, "'" <> message <> "'"] 
+                                    )
+                            in  function "lookupError" ["type"]
+                                    [ declareConst "lookup" $ obj kv
+                                    , ifExpr "lookup[type] !== undefined"
+                                    , thenExpr [ return "lookup[type]" ]
+                                    , elseExpr [ return "null" ]
+                                    ]
+                    updateProgram errorLookup
+                    let errorMatchers = (flip map) errorStore 
                             (\tup -> 
-                                -- TODO - define makeError function
-                                (name) <> ": " <> (call "makeError" [asToken $ name, regex, message, sync ]) 
-                                where 
+                                let 
                                     name = fst tup
                                     regex = case Map.lookup name regexStore of 
                                         Nothing -> "undefined"
@@ -149,9 +181,33 @@ doGenerate (Just ast) = do
                                     sync = case snd $ snd tup of 
                                         Nothing -> "undefined"
                                         Just reg -> reg
+                                in
+                                    -- TODO - define function for looking up error based on token name
+                                    -- TODO - ensure there's a default error function
+                                    (name) <> ": " <> (call "makeError" [asToken $ name, regex, sync ]) 
                             )
                         kv = Str.joinWith ",\n" errorMatchers
                     pure $ declareConst "errors" ("{\n" <> kv <> "\n}")
+                    where
+                        -- given name, regex, and sync regex
+                        -- returns object containing error token type and lexeme (possibly including the discard to sync)
+                        makeError :: String
+                        makeError = 
+                            function "makeError" ["name", "regex", "sync"]
+                                [ declareConst "initialMatcher" $ call "makeMatcher" ["name", "regex"]
+                                , return $ function "matcher" ["input"]
+                                ,   [ declareConst "initialResult" $ call "initialMatcher" ["input"]
+                                    , ifExpr "!sync || initialResult === null"
+                                    , thenExpr [return "initialResult"]
+                                    , elseExpr 
+                                        [ declareConst "afterMatchInput" "input.slice(initialResult.lexeme.length)"
+                                        , declareConst "{discarded, synced}" $ call "discardUntil" ["afterMatchInput", "sync"]
+                                        , assign "initialResult.originalLexeme" "initialResult.lexeme"
+                                        , assign "initialResult.lexeme" "initialResult.lexeme + discarded"
+                                        , return "initialResult"
+                                        ]
+                                    ]
+                                ]
 
                 -- while the string still has remaining input, we fetch all the 
                 -- possible matchers and try them all, taking the one with maximum munch.
@@ -229,10 +285,15 @@ doGenerate (Just ast) = do
                         ]
                     , function "discardUntil" ["str", "sync"]
                         [ declareLet "search" "str"
+                        , declareConst "discarded" "[]"
                         , while ("!str.test(" <> "sync" <> ") && str.length > 0")
-                            [ "search = str.slice(1);"
+                            [ "discarded." $ call "push" ["search[0]"]
+                            , "search = search.slice(1);"
                             ]
-                        , return "search"
+                        , return $ obj 
+                                [ "discarded", "discarded.join('')"
+                                , "synced", "search"
+                                ]
                         ]
                     , "\n"
                     , comment 
@@ -458,6 +519,9 @@ thenExpr body = Str.joinWith "\n"
         , body_
         , "}"
         ]
+
+elseIfExpr :: String -> String
+elseIfExpr cond = "else if(" <> cond <> ")"
 
 elseExpr :: Array String -> String
 elseExpr body = Str.joinWith "\n"
