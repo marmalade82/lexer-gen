@@ -76,19 +76,28 @@ type Context =
     , errors :: ErrorStore
     }
 
+initialContext :: Context 
+initialContext =
+    { program: ""
+    , names: Map.fromFoldable
+        [ Tuple "_default" "new RegExp('.*')"
+        ]
+    , errors: Map.fromFoldable
+        [ Tuple "_default" (Tuple "No match for any token" Nothing)
+        ]
+    }
+
 type CodeState a = State Context a
 
--- TODO fix usage. TokenNamesStore type no longer matches
-updateNames :: Token -> CodeState Unit
-updateNames tok = do 
+updateNames :: String -> String -> CodeState Unit
+updateNames token regex = do 
     ctx <- get 
-    put $ ctx { names = Map.insert tok.lexeme unit ctx.names }
+    put $ ctx { names = Map.insert token regex ctx.names }
 
--- TODO fix usage. ErrorStore type no longer matches
-updateErrors :: String -> String -> CodeState Unit
-updateErrors name message = do 
+updateErrors :: String -> String -> Maybe String -> CodeState Unit
+updateErrors name message sync = do 
     ctx <- get
-    put $ ctx { errors = Map.insert name message ctx.errors }
+    put $ ctx { errors = Map.insert name (Tuple message sync) ctx.errors }
 
 updateProgram :: String -> CodeState Unit
 updateProgram next = do 
@@ -114,7 +123,7 @@ doGenerate (Just ast) = do
                     exportTokenTypes_ <- exportTokenTypes -- for use by whatever parser
                     updateProgram exportTokenTypes_
                     matchers <- defineMatchers -- array of matcheres
-                    updateProgram defineMatchers
+                    updateProgram matchers
                     errors <- defineErrors
                     updateProgram errors
                     pure $ makeProgram "" "" ""
@@ -123,27 +132,36 @@ doGenerate (Just ast) = do
                 defineMatchers :: CodeState String
                 defineMatchers = do
                     updateProgram makeMatcher
-                    ctx <- get
-                    let matcherStore = Map.toUnfoldable ctx.names :: Array (Tuple String String)
-                        -- TODO: exclude error tokens
-                        matchers = (flip map) matcherStore (\tup -> (fst tup) <> ": " <> (call "makeMatcher" [asToken $ fst tup, snd tup]) ) :: Array String
+                    nonErrorTokenStore_ <- nonErrorTokenStore
+                    let
+                        matchers = (flip map) nonErrorTokenStore_ (\tup -> (fst tup) <> ": " <> (call "makeMatcher" [asToken $ fst tup, snd tup]) ) :: Array String
                         kv = Str.joinWith ",\n" matchers
                     pure $ declareConst "matchers" ("{\n" <> kv <> "\n}")
 
 
                     where 
+                        nonErrorTokenStore :: CodeState (Array (Tuple String String))
+                        nonErrorTokenStore = do 
+                            ctx <- get
+                            let allTokenStore = Map.toUnfoldable ctx.names :: Array (Tuple String String)
+                                errorStore = ctx.errors
+                                nonErrorStore = (flip Array.filter) allTokenStore 
+                                                    (\x@(Tuple name _) -> 
+                                                        (Map.lookup name errorStore) == Nothing
+                                                    )
+                            pure nonErrorStore
                         -- given name and regex, defines a function that, given the input string,
                         -- returns object containing token type and lexeme, or null if no match
                         makeMatcher :: String
-                        makeMatcher tokenName regex = 
+                        makeMatcher = 
                             function "makeMatcher" ["tokenName", "regex"]
                                 [return $
                                     function "matcher" ["input"] 
-                                        [ declareConst "result" ("input." $ call "match" [regex])
+                                        [ declareConst "result" ((<>) "input." $ call "match" ["regex"])
                                         , ifExpr "result.length > 0"
                                         , thenExpr 
                                             [ return $ obj 
-                                                [ "type", tokenName
+                                                [ "type", "tokenName"
                                                 , "lexeme", "result[0]" ]
                                             ]
                                         , elseExpr [ return "null" ]
@@ -182,8 +200,6 @@ doGenerate (Just ast) = do
                                         Nothing -> "undefined"
                                         Just reg -> reg
                                 in
-                                    -- TODO - define function for looking up error based on token name
-                                    -- TODO - ensure there's a default error function
                                     (name) <> ": " <> (call "makeError" [asToken $ name, regex, sync ]) 
                             )
                         kv = Str.joinWith ",\n" errorMatchers
@@ -196,7 +212,7 @@ doGenerate (Just ast) = do
                             function "makeError" ["name", "regex", "sync"]
                                 [ declareConst "initialMatcher" $ call "makeMatcher" ["name", "regex"]
                                 , return $ function "matcher" ["input"]
-                                ,   [ declareConst "initialResult" $ call "initialMatcher" ["input"]
+                                    [ declareConst "initialResult" $ call "initialMatcher" ["input"]
                                     , ifExpr "!sync || initialResult === null"
                                     , thenExpr [return "initialResult"]
                                     , elseExpr 
@@ -287,7 +303,7 @@ doGenerate (Just ast) = do
                         [ declareLet "search" "str"
                         , declareConst "discarded" "[]"
                         , while ("!str.test(" <> "sync" <> ") && str.length > 0")
-                            [ "discarded." $ call "push" ["search[0]"]
+                            [ (<>) "discarded." $ call "push" ["search[0]"]
                             , "search = search.slice(1);"
                             ]
                         , return $ obj 
@@ -305,8 +321,7 @@ doGenerate (Just ast) = do
                         ]
                     , function "doMaxMunch" ["str", "line", "column"]
                         [ declareLet "munch" $ 
-                            --TODO - define matchers array with appropriate matcher functions
-                            "matchers." <> (call "reduce" 
+                            "Object.values(matchers)." <> (call "reduce" 
                                 [ function "match" ["acc", "matcher"]
                                     [ declareConst "result" (call "matcher" ["str"])
                                     , ifExpr "result !== null"
@@ -325,9 +340,8 @@ doGenerate (Just ast) = do
 
                         , ifExpr $ "munch.type === undefined"
                         , thenExpr 
-                           -- TODO define the array of error matchers that can optionally sync
-                            [ assign "munch" $ 
-                                "errors." <> (call "reduce"
+                            [ assign "munch" $
+                                "Object.values(errors)." <> (call "reduce"
                                     [ function "match" ["acc", "error"]
                                         [ declareConst "result" (call "error" ["str"])
                                         , ifExpr "result !== null"
@@ -354,8 +368,7 @@ doGenerate (Just ast) = do
                         [ "This function determines whether a given munch is an error munch or not"
                         ]
                     , function "isError" ["munch"]
-                        -- TODO: define the errorLookup object for quick lookup of whether a token is an error
-                        [ return "errorLookup[munch.type.toString()] !== undefined"
+                        [ return "lookupError(munch.type.toString()) !== null"
                         ]
                     
                     , function "publish" ["munch", "tokens", "errors"]
@@ -368,7 +381,6 @@ doGenerate (Just ast) = do
                             ]
                         , function "publishError" ["munch", "errors"]
                             [ (<>) "errors." $ call "push" 
-                                -- TODO define lookupError
                                 [ "`line ${munch.line}, column ${munch.column}: ${lookupError(munch.type)}`"
                                 ]
                             ]
@@ -425,8 +437,7 @@ doGenerate (Just ast) = do
                 generated = do 
                     name <- generateName $ head arr
                     regex <- generateRegex $ (eHead 2) arr
-                    matcher <- makeMatcher name regex
-                    updateProgram matcher
+                    registerTokenRegex name regex
                     pure ""
             in  generated
         ErrorSpec arr -> 
@@ -435,8 +446,7 @@ doGenerate (Just ast) = do
                     name <- generateName $ head arr
                     message <- generateMessage $ (eHead 2) arr
                     sync <- generateName $ (eHead 3) arr
-                    fullError <- makeError name message sync
-                    updateProgram fullError
+                    registerTokenError name message sync
                     pure ""
             in  generated
         DefaultError arr -> 
@@ -444,14 +454,12 @@ doGenerate (Just ast) = do
                 generated = do
                     message <- generateMessage $ head arr
                     sync <- generateName $ (eHead 2) arr
-                    fullError <- makeError "_default" message sync
-                    updateProgram fullError
+                    registerTokenError "_default" message sync
                     pure ""
             in  generated
 
         
         Name tok -> do 
-            updateNames tok
             pure "" 
         Regex tok -> pure ""
         ErrorMessage tok -> pure ""
@@ -465,37 +473,20 @@ doGenerate (Just ast) = do
         generateRegex (Just (Regex tok)) = pure $ "new RegExp(" <> tok.lexeme <> ")"
         generateRegex _ = pure ""
 
-        -- TODO : this is wrong. Token name and regex should be written into State so that we 
-        -- can later define an array of token matchers
-        makeMatcher :: String -> String -> CodeState String
-        makeMatcher name regex = pure $ Str.joinWith "\n"
-            [ declareConst name regex
-            , function ("match" <> name) ["str"] 
-                [ declareConst "matches" ("str.match(" <> name <> ");")
-                , return $ ternary "matches.length > 0" "matches[0]" "null"
-                ]
-            ]
+        registerTokenRegex :: String -> String -> CodeState Unit
+        registerTokenRegex name regex = do 
+            updateNames name regex
 
         generateMessage :: Maybe GenAST -> CodeState String
         generateMessage (Just (ErrorMessage tok)) = pure tok.lexeme
         generateMessage _ = pure ""
 
-        -- describes what happens when a particular token matches an error
-        -- TODO : this is wrong. Error should be written into State so that we 
-        -- can later define an array of error matchers, a lookup table of error tokens,
-        -- and a way to look up an error message based on the error type
-        makeError :: String -> String -> String -> CodeState String
-        makeError name message sync = pure $ Str.joinWith "\n"
-            -- to recover, push the error message into the global list of errors, and then 
-            -- discard the input string until we match the sync token, if it exists
-            [ function ("error" <> name) ["str"]
-                [ "errors.push(" <> message <> ");"
-                , declareLet "rem" "''"
-                , declareConst "sync" ("matchers['" <> name <> "']")
-                , ifExpr "sync" <> thenExpr ["rem = discardUntil(" <> "str, sync" <> ");"]
-                , return "rem"
-                ]
-            ]
+        -- Writes the error into global state so we can define error functions later
+        registerTokenError :: String -> String -> String -> CodeState Unit
+        registerTokenError name message sync = do 
+            updateErrors name message $ case sync of 
+                "" -> Nothing
+                x -> Just x
 
 eHead :: forall a. Int -> Array a -> Maybe a
 eHead = flip index
@@ -585,7 +576,7 @@ obj key_values =
             ]
     where 
         group :: Array String -> Int -> Array (Array String)
-        group arr count = doGroup arr count []
+        group arr_ count_ = doGroup arr_ count_ []
             where 
                 doGroup :: Array String -> Int -> Array (Array String) -> Array (Array String)
                 doGroup arr count acc =
