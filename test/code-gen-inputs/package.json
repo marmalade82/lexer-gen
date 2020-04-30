@@ -1,0 +1,11 @@
+{
+  "name": "code-gen-inputs",
+  "version": "0.1.0",
+  "description": "Package for testing code generation",
+  "main": "index.js",
+  "scripts": {
+    "test": "test"
+  },
+  "author": "Howard Chen",
+  "license": "ISC"
+}
