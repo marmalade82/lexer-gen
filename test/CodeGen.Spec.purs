@@ -13,6 +13,7 @@ import Node.Buffer (thaw)
 import Node.Buffer as Buf
 import Node.Buffer.Class (class MutableBuffer)
 import Node.Buffer.Immutable as ImmBuf
+import Node.ChildProcess as CP
 import Node.Encoding (Encoding(..))
 import Node.FS.Sync as FS
 import Node.Globals (__dirname)
@@ -44,4 +45,24 @@ emptySpec = describe "Without any token definitions" do
                     else FS.writeTextFile UTF8 file ""
                     FS.writeTextFile UTF8 file generated
                     pure unit
+            result = unsafePerformEffect $ do 
+                    cwd <- Path.resove [__dirname] "../../test/code-gen-inputs"
+                    -- This should cause the tests to run
+                    cp <- CP.spawn "npm run test" []
+                        { cwd : cwd
+                        , detached: false
+                        , env: Nothing
+                        , gid: Nothing
+                        , stdio: CP.inherit
+                        , uid: Nothing
+                        }
+                    CP.onExit cp 
+                        (\exit -> do 
+                            case exit of 
+                                CP.Normally _ -> pure unit
+                                CP.BySignal sig -> 
+                        )
+            -- Is there a CSP channel implementation? I'd like to block here until the child process is done running.
+            -- probably have to ask freenode. Or is the Aff monad what I need?
+        result `shouldEqual` Right unit
         pure unit

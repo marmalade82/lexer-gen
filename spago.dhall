@@ -8,6 +8,7 @@ You can edit this file as you like.
   , "console"
   , "effect"
   , "foreign-generic"
+  , "node-child-process"
   , "node-process"
   , "profunctor-lenses"
   , "psci-support"
