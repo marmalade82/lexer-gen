@@ -4,8 +4,15 @@
   "description": "Package for testing code generation",
   "main": "index.js",
   "scripts": {
-    "test": "test"
+    "test": "jest"
   },
   "author": "Howard Chen",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "@babel/core": "^7.9.6",
+    "@babel/preset-env": "^7.9.6",
+    "babel-jest": "^25.5.1",
+    "jest": "^25.5.3"
+  },
+  "dependencies": {}
 }

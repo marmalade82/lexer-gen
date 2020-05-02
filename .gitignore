@@ -5,3 +5,4 @@ obj/*
 output
 .psc-ide-port
 .psci_modules
+**/node_modules
