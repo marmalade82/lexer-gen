@@ -5,7 +5,7 @@ const MyInput = `I am a hippopatamus `;
 describe("Lexing input with an empty lexer", () => {
   test("yup", () => {
     expect(true).toEqual(true);
-  })
+  });
   test("empty input succeeds", () => {
     const input = "";
     const result = lex(input);

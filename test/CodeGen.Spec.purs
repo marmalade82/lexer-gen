@@ -24,6 +24,7 @@ import Node.ChildProcess as CP
 import Node.Encoding (Encoding(..))
 import Node.FS.Sync as FS
 import Node.Globals (__dirname)
+import Node.Path (FilePath)
 import Node.Path as Path
 import Node.Process as Process
 import Node.Stream as Stream
@@ -58,11 +59,40 @@ generateProgram = do
         else FS.writeTextFile UTF8 file ""
         FS.writeTextFile UTF8 file generated
         pure unit
+    waitForPrettier
+
+getCwd :: Effect FilePath
+getCwd = Path.resolve [__dirname] "../../test/code-gen-inputs"
+
+waitForPrettier :: Aff.Aff Unit
+waitForPrettier = Aff.makeAff 
+    (\emit -> do
+        cwd <- getCwd
+        cp <- CP.spawn "npm.cmd" ["run", "pretty"]
+            { cwd : Just cwd
+            , detached: false
+            , env: Nothing
+            , gid: Nothing
+            , stdio: CP.ignore
+            , uid: Nothing
+            }
+        CP.onExit cp 
+                (\exit -> do 
+                    log "exiting"
+                    emit $ Right unit
+                )
+        CP.onError cp 
+            (\error -> do 
+                log "erroring"
+                emit $ Right unit
+            )
+        pure Aff.nonCanceler
+    )
 
 waitForChildProcess :: Aff.Aff Boolean
 waitForChildProcess = Aff.makeAff 
     (\emit -> do
-        cwd <- Path.resolve [__dirname] "../../test/code-gen-inputs"
+        cwd <- getCwd
         liftEffect $ log cwd
         -- This should cause the tests to run
         -- Since this will run asynchronously, we really want to lift this into Aff

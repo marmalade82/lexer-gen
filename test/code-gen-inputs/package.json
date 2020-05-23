@@ -14,7 +14,7 @@
     "@babel/preset-env": "^7.9.6",
     "babel-jest": "^25.5.1",
     "jest": "^25.5.3",
-    "prettier": "^2.0.5"
+    "prettier": "2.0.5"
   },
   "dependencies": {}
 }
