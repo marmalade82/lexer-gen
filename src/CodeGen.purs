@@ -12,9 +12,9 @@ import Control.Monad.State
 import Prelude
 
 import Control.Monad.Trans.Class (lift)
+import Data.Array (concatMap)
 import Data.Array (head, last, length, take, index)
 import Data.Array as Array
-import Data.Array (concatMap)
 import Data.Either (Either(..))
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
@@ -24,6 +24,7 @@ import Data.Maybe (Maybe(..))
 import Data.String as Str
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..), fst, snd)
+import JavaScript as JS
 
 
 {-  module for generating code from the AST
@@ -139,9 +140,9 @@ doGenerate (Just ast) = do
                     updateProgram makeMatcher
                     nonErrorTokenStore_ <- nonErrorTokenStore
                     let
-                        matchers = (flip map) nonErrorTokenStore_ (\tup -> (fst tup) <> ": " <> (call "makeMatcher" [asToken $ fst tup, snd tup]) ) :: Array String
+                        matchers = (flip map) nonErrorTokenStore_ (\tup -> (fst tup) <> ": " <> (JS.call "makeMatcher" [asToken $ fst tup, snd tup]) ) :: Array String
                         kv = Str.joinWith ",\n" matchers
-                    pure $ declareConst "matchers" ("{\n" <> kv <> "\n}")
+                    pure $ JS.declareConst "matchers" ("{\n" <> kv <> "\n}")
 
 
                     where 
@@ -160,17 +161,17 @@ doGenerate (Just ast) = do
                         -- returns object containing token type and lexeme, or null if no match
                         makeMatcher :: String
                         makeMatcher = 
-                            function "makeMatcher" ["tokenName", "regex"]
-                                [return $
-                                    function "matcher" ["input"] 
-                                        [ declareConst "result" ((<>) "input." $ call "match" ["regex"])
-                                        , ifExpr "result.length > 0"
-                                        , thenExpr 
-                                            [ return $ obj 
+                            JS.function "makeMatcher" ["tokenName", "regex"]
+                                [JS.return $
+                                    JS.function "matcher" ["input"] 
+                                        [ JS.declareConst "result" ((<>) "input." $ JS.call "match" ["regex"])
+                                        , JS.ifExpr "result.length > 0"
+                                        , JS.thenExpr 
+                                            [ JS.return $ JS.obj 
                                                 [ "type", "tokenName"
                                                 , "lexeme", "result[0]" ]
                                             ]
-                                        , elseExpr [ return "null" ]
+                                        , JS.elseExpr [ JS.return "null" ]
                                         ]
                                 ]
                 
@@ -187,11 +188,11 @@ doGenerate (Just ast) = do
                                             message = fst $ snd tup
                                         in  [name, "'" <> message <> "'"] 
                                     )
-                            in  function "lookupError" ["type"]
-                                    [ declareConst "lookup" $ obj kv
-                                    , ifExpr "lookup[type] !== undefined"
-                                    , thenExpr [ return "lookup[type]" ]
-                                    , elseExpr [ return "null" ]
+                            in  JS.function "lookupError" ["type"]
+                                    [ JS.declareConst "lookup" $ JS.obj kv
+                                    , JS.ifExpr "lookup[type] !== undefined"
+                                    , JS.thenExpr [ JS.return "lookup[type]" ]
+                                    , JS.elseExpr [ JS.return "null" ]
                                     ]
                     updateProgram errorLookup
                     let errorMatchers = (flip map) errorStore 
@@ -206,27 +207,27 @@ doGenerate (Just ast) = do
                                         Nothing -> "undefined"
                                         Just reg -> reg
                                 in
-                                    (name) <> ": " <> (call "makeError" [asToken $ name, regex, sync ]) 
+                                    (name) <> ": " <> (JS.call "makeError" [asToken $ name, regex, sync ]) 
                             )
                         kv = Str.joinWith ",\n" errorMatchers
-                    pure $ declareConst "errors" ("{\n" <> kv <> "\n}")
+                    pure $ JS.declareConst "errors" ("{\n" <> kv <> "\n}")
                     where
                         -- given name, regex, and sync regex
                         -- returns object containing error token type and lexeme (possibly including the discard to sync)
                         makeError :: String
                         makeError = 
-                            function "makeError" ["name", "regex", "sync"]
-                                [ declareConst "initialMatcher" $ call "makeMatcher" ["name", "regex"]
-                                , return $ function "matcher" ["input"]
-                                    [ declareConst "initialResult" $ call "initialMatcher" ["input"]
-                                    , ifExpr "!sync || initialResult === null"
-                                    , thenExpr [return "initialResult"]
-                                    , elseExpr 
-                                        [ declareConst "afterMatchInput" "input.slice(initialResult.lexeme.length)"
-                                        , declareConst "{discarded, synced}" $ call "discardUntil" ["afterMatchInput", "sync"]
-                                        , assign "initialResult.originalLexeme" "initialResult.lexeme"
-                                        , assign "initialResult.lexeme" "initialResult.lexeme + discarded"
-                                        , return "initialResult"
+                            JS.function "makeError" ["name", "regex", "sync"]
+                                [ JS.declareConst "initialMatcher" $ JS.call "makeMatcher" ["name", "regex"]
+                                , JS.return $ JS.function "matcher" ["input"]
+                                    [ JS.declareConst "initialResult" $ JS.call "initialMatcher" ["input"]
+                                    , JS.ifExpr "!sync || initialResult === null"
+                                    , JS.thenExpr [JS.return "initialResult"]
+                                    , JS.elseExpr 
+                                        [ JS.declareConst "afterMatchInput" "input.slice(initialResult.lexeme.length)"
+                                        , JS.declareConst "{discarded, synced}" $ JS.call "discardUntil" ["afterMatchInput", "sync"]
+                                        , JS.assign "initialResult.originalLexeme" "initialResult.lexeme"
+                                        , JS.assign "initialResult.lexeme" "initialResult.lexeme + discarded"
+                                        , JS.return "initialResult"
                                         ]
                                     ]
                                 ]
@@ -243,20 +244,20 @@ doGenerate (Just ast) = do
                 makeProgram matchers errors defaults = 
                     let prog = 
                             [ 
-                              "export " <> function "lex" ["input"]
-                                [ declareLet "str" "input"
-                                , declareConst "tokens" "[]"
-                                , declareConst "errors" "[]"
-                                , declareLet "line" "0"
-                                , declareLet "column" "0"
-                                , while (call "inputRemains" ["str"])
-                                    [ declareLet "maxMunch" "doMaxMunch(str, line, column)"
-                                    , assign "str" "str.slice(maxMunch.lexeme.length)"
-                                    , call "publish" ["maxMunch", "tokens", "errors"]
-                                    , assign "line" $ call "newLine" ["maxMunch", "line"]
-                                    , assign "column" $ call "newColumn" ["maxMunch", "column"]
+                              "export " <> JS.function "lex" ["input"]
+                                [ JS.declareLet "str" "input"
+                                , JS.declareConst "tokens" "[]"
+                                , JS.declareConst "errors" "[]"
+                                , JS.declareLet "line" "0"
+                                , JS.declareLet "column" "0"
+                                , JS.while (JS.call "inputRemains" ["str"])
+                                    [ JS.declareLet "maxMunch" "doMaxMunch(str, line, column)"
+                                    , JS.assign "str" "str.slice(maxMunch.lexeme.length)"
+                                    , JS.call "publish" ["maxMunch", "tokens", "errors"]
+                                    , JS.assign "line" $ JS.call "newLine" ["maxMunch", "line"]
+                                    , JS.assign "column" $ JS.call "newColumn" ["maxMunch", "column"]
                                     ]
-                                , return $ obj
+                                , JS.return $ JS.obj
                                     [ "tokens", "tokens"
                                     , "errors", "errors"
                                     ]
@@ -266,132 +267,132 @@ doGenerate (Just ast) = do
                     in  Str.joinWith "\n" prog 
                 helpers :: String
                 helpers = Str.joinWith "\n"
-                    [ comment
+                    [ JS.comment
                         [ "This function calculates the new line position by looking at the lexeme"
                         , "and counting the number of newlines in it"
                         ]
-                    , function "newLine" ["munch", "oldLine"] 
-                        [ declareLet "count" "0"
+                    , JS.function "newLine" ["munch", "oldLine"] 
+                        [ JS.declareLet "count" "0"
                         , "for(let i = 0; i < munch.lexeme.length; i++){"
-                        , ifExpr "munch.lexeme[i] === '\\n'"
-                        , thenExpr ["count++"]
-                        , return $ "oldLine + count"
+                        , JS.ifExpr "munch.lexeme[i] === '\\n'"
+                        , JS.thenExpr ["count++"]
+                        , JS.return $ "oldLine + count"
                         , "}"
                         ]
-                    , comment 
+                    , JS.comment 
                         [ "This function calculates the new column position by looking at the lexeme"
                         , "and finding the number of characters AFTER the last newline"
                         ]
-                    , function "newColumn" ["munch", "oldCol"] 
-                        [ declareLet "index" "munch.lexeme.length"
-                        , declareLet "foundNewline" "false"
-                        , while "index > 0 && !foundNewline"
+                    , JS.function "newColumn" ["munch", "oldCol"] 
+                        [ JS.declareLet "index" "munch.lexeme.length"
+                        , JS.declareLet "foundNewline" "false"
+                        , JS.while "index > 0 && !foundNewline"
                             [ "index--"
-                            , ifExpr "munch.lexeme[index] === '\\n'"
-                            , thenExpr 
-                                [ assign "foundNewline" "true"
+                            , JS.ifExpr "munch.lexeme[index] === '\\n'"
+                            , JS.thenExpr 
+                                [ JS.assign "foundNewline" "true"
                                 , "break;"
                                 ]
                             ]
-                        , ifExpr "foundNewline"
-                        , thenExpr [ return $ "munch.lexeme.length - index - 1"]
-                        , elseExpr [ return $ "oldCol + munch.lexeme.length"]
+                        , JS.ifExpr "foundNewline"
+                        , JS.thenExpr [ JS.return $ "munch.lexeme.length - index - 1"]
+                        , JS.elseExpr [ JS.return $ "oldCol + munch.lexeme.length"]
                         ]
-                    , function "inputRemains" ["str"]
-                        [ return "str.length > 0"
+                    , JS.function "inputRemains" ["str"]
+                        [ JS.return "str.length > 0"
                         ]
-                    , comment 
+                    , JS.comment 
                         [ "This function discards characters from the input string until"
                         , "the regex matches the syncing regex. Lexing should restart from"
                         , "there"
                         ]
-                    , function "discardUntil" ["str", "sync"]
-                        [ declareLet "search" "str"
-                        , declareConst "discarded" "[]"
-                        , while ("!str.test(" <> "sync" <> ") && str.length > 0")
-                            [ (<>) "discarded." $ call "push" ["search[0]"]
+                    , JS.function "discardUntil" ["str", "sync"]
+                        [ JS.declareLet "search" "str"
+                        , JS.declareConst "discarded" "[]"
+                        , JS.while ("!str.test(" <> "sync" <> ") && str.length > 0")
+                            [ (<>) "discarded." $ JS.call "push" ["search[0]"]
                             , "search = search.slice(1);"
                             ]
-                        , return $ obj 
+                        , JS.return $ JS.obj 
                                 [ "discarded", "discarded.join('')"
                                 , "synced", "search"
                                 ]
                         ]
                     , "\n"
-                    , comment 
+                    , JS.comment 
                         [ "This function runs through all the declared tokens and tries all of them to"
                         , "find the one with maximum munch. If two or more have the same length, the one"
                         , "that was declared latest in the lexer-gen file takes priority. Once the maximum"
                         , "munch is identified, it returns an object containing the token type, the lexeme,"
                         , "the column number, and the line number"
                         ]
-                    , function "doMaxMunch" ["str", "line", "column"]
-                        [ declareLet "munch" $ 
-                            "Object.values(matchers)." <> (call "reduce" 
-                                [ function "match" ["acc", "matcher"]
-                                    [ declareConst "result" (call "matcher" ["str"])
-                                    , ifExpr "result !== null"
-                                    , thenExpr 
-                                        [ assign "acc.type" "result.type"
-                                        , assign "acc.lexeme" "result.lexeme"
+                    , JS.function "doMaxMunch" ["str", "line", "column"]
+                        [ JS.declareLet "munch" $ 
+                            "Object.values(matchers)." <> (JS.call "reduce" 
+                                [ JS.function "match" ["acc", "matcher"]
+                                    [ JS.declareConst "result" (JS.call "matcher" ["str"])
+                                    , JS.ifExpr "result !== null"
+                                    , JS.thenExpr 
+                                        [ JS.assign "acc.type" "result.type"
+                                        , JS.assign "acc.lexeme" "result.lexeme"
                                         ]
-                                    , return "acc"
+                                    , JS.return "acc"
                                     ]
-                                , obj   [ "line",      "line" 
+                                , JS.obj   [ "line",      "line" 
                                         , "column",    "column"
                                         , "type",      "undefined"
                                         , "lexeme",    " '' "
                                         ]
                                 ])
 
-                        , ifExpr $ "munch.type === undefined"
-                        , thenExpr 
-                            [ assign "munch" $
-                                "Object.values(errors)." <> (call "reduce"
-                                    [ function "match" ["acc", "error"]
-                                        [ declareConst "result" (call "error" ["str"])
-                                        , ifExpr "result !== null"
-                                        , thenExpr 
-                                            [ assign "acc.type" "result.type"
-                                            , assign "acc.lexeme" "result.lexeme"
+                        , JS.ifExpr $ "munch.type === undefined"
+                        , JS.thenExpr 
+                            [ JS.assign "munch" $
+                                "Object.values(errors)." <> (JS.call "reduce"
+                                    [ JS.function "match" ["acc", "error"]
+                                        [ JS.declareConst "result" (JS.call "error" ["str"])
+                                        , JS.ifExpr "result !== null"
+                                        , JS.thenExpr 
+                                            [ JS.assign "acc.type" "result.type"
+                                            , JS.assign "acc.lexeme" "result.lexeme"
                                             ]
-                                        , return "acc"
+                                        , JS.return "acc"
                                         ]
-                                    , obj   [ "line",      "line" 
+                                    , JS.obj   [ "line",      "line" 
                                             , "column",    "column"
                                             , "type",      "undefined"
                                             , "lexeme",    " '' "
                                             ]
                                     ])
-                            , ifExpr $ "munch.type === undefined"
-                            , thenExpr
+                            , JS.ifExpr $ "munch.type === undefined"
+                            , JS.thenExpr
                                 [ "throw new Error('Lexing got stuck! No matchers or errors succeeded! Unexpected'); " ]
                             ]
                         , "\n"
-                        , return "munch"
+                        , JS.return "munch"
                         ]
-                    , comment 
+                    , JS.comment 
                         [ "This function determines whether a given munch is an error munch or not"
                         ]
-                    , function "isError" ["munch"]
-                        [ return "lookupError(munch.type.toString()) !== null"
+                    , JS.function "isError" ["munch"]
+                        [ JS.return "lookupError(munch.type.toString()) !== null"
                         ]
                     
-                    , function "publish" ["munch", "tokens", "errors"]
-                        [ ifExpr $ call "isError" ["munch"] 
-                        , thenExpr
-                            [ call "publishError" ["munch", "errors"]
+                    , JS.function "publish" ["munch", "tokens", "errors"]
+                        [ JS.ifExpr $ JS.call "isError" ["munch"] 
+                        , JS.thenExpr
+                            [ JS.call "publishError" ["munch", "errors"]
                             ]
-                        , elseExpr 
-                            [ call "publishToken" ["munch", "tokens"]
+                        , JS.elseExpr 
+                            [ JS.call "publishToken" ["munch", "tokens"]
                             ]
-                        , function "publishError" ["munch", "errors"]
-                            [ (<>) "errors." $ call "push" 
+                        , JS.function "publishError" ["munch", "errors"]
+                            [ (<>) "errors." $ JS.call "push" 
                                 [ "`line ${munch.line}, column ${munch.column}: ${lookupError(munch.type)}`"
                                 ]
                             ]
-                        , function "publishToken" ["munch", "tokens"]
-                            [ (<>) "tokens." $ call "push" [ "munch" ]
+                        , JS.function "publishToken" ["munch", "tokens"]
+                            [ (<>) "tokens." $ JS.call "push" [ "munch" ]
                             ]
                         ]
                     ]
@@ -409,7 +410,7 @@ doGenerate (Just ast) = do
                         doExport store = 
                             let keys :: Array String
                                 keys = Array.fromFoldable $ Map.keys store
-                            in  (flip map) keys (\key -> "export " <> (declareConst (asToken key) ("\"" <> key <> "\"")))
+                            in  (flip map) keys (\key -> "export " <> (JS.declareConst (asToken key) ("\"" <> key <> "\"")))
 
         NormalSpecs arr ->
             let mapped :: (CodeState (Array String))
@@ -496,105 +497,6 @@ doGenerate (Just ast) = do
 
 eHead :: forall a. Int -> Array a -> Maybe a
 eHead = flip index
-
-declareConst :: String -> String -> String
-declareConst name expr = 
-    "const " <> name <> " = " <> expr <> ";"
-
-declareLet :: String -> String -> String
-declareLet name expr =
-    "let " <> name <> " = " <> expr <> ";"
-
-ifExpr :: String -> String
-ifExpr expr = 
-    "if(" <> expr <> ")"
-
-thenExpr :: Array String -> String
-thenExpr body = Str.joinWith "\n"
-    let body_ = Str.joinWith "\n" body
-    in  [ "{"
-        , body_
-        , "}"
-        ]
-
-elseIfExpr :: String -> String
-elseIfExpr cond = "else if(" <> cond <> ")"
-
-elseExpr :: Array String -> String
-elseExpr body = Str.joinWith "\n"
-    let body_ = Str.joinWith "\n" body
-    in  [ "else {"
-        , body_
-        , "}"
-        ]
-
-function :: String -> Array String -> Array String -> String
-function name args body = 
-    let args_ = Str.joinWith ", " args
-        body_ = "\t" <> Str.joinWith "\n\t" body
-    in  Str.joinWith "\n" 
-            [ "function " <> name <> "(" <> args_ <> ") {"
-            , body_
-            , "}"
-            ]
-
-return :: String -> String
-return expr = 
-    "return " <> expr <> ";"
-
-ternary :: String -> String -> String -> String
-ternary test t f = 
-    test <> " ? " <> t <> " : " <> f <> ";"
-
-comment :: Array String -> String
-comment body = 
-    let body_ = Str.joinWith "\n * " body
-    in  Str.joinWith "\n * "
-            [ "/*"
-            , body_
-            , "*/"
-            ]
-
-tab :: String
-tab = "    "
-
-while :: String -> Array String -> String
-while cond body = 
-    let body_ = tab <> Str.joinWith ("\n" <> tab) body
-    in  Str.joinWith "\n"
-            [ "while(" <> cond <> "){"
-            , body_
-            , "}"
-            ]
-
-assign :: String -> String -> String
-assign var val = 
-    var <> " = " <> val <> ";"
-
-call :: String -> Array String -> String
-call fn args = 
-    fn <> "(" <> (Str.joinWith ", " args) <> ")"
-
-obj :: Array String -> String
-obj key_values = 
-    let _key_values = Str.joinWith ",\n" $ (flip map) (group key_values 2) (\kv -> Str.joinWith ": " kv)
-    in  Str.joinWith "\n"
-            [ "{"
-            , _key_values
-            , "}"
-            ]
-    where 
-        group :: Array String -> Int -> Array (Array String)
-        group arr_ count_ = doGroup arr_ count_ []
-            where 
-                doGroup :: Array String -> Int -> Array (Array String) -> Array (Array String)
-                doGroup arr count acc =
-                    if  Array.length arr < count then 
-                        acc
-                    else 
-                        let dropped = Array.drop count arr
-                            newGroup = Array.take count arr
-                        in  doGroup dropped count (Array.cons newGroup acc)
 
 asToken :: String -> String
 asToken name = name
