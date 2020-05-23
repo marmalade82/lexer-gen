@@ -3,6 +3,7 @@ module Definitions
     , defineTokens
     , defineMatchers
     , defineErrors
+    , fn
     ) where
 
 
@@ -20,6 +21,35 @@ import Data.Tuple (Tuple(..), fst, snd)
 import JavaScript as JS
 import StoreInfo (CodeState, TokenNamesStore)
 
+-- Export global function names for others to call
+type FunctionDefinitions =
+    { newLine :: String
+    , newColumn :: String
+    , inputRemains :: String
+    , discardUntil :: String
+    , doMaxMunch :: String
+    , isError :: String
+    , publish :: String
+    , makeMatcher :: String
+    , makeError :: String
+    , lookupError :: String
+    }
+
+fn :: FunctionDefinitions
+fn = 
+    { newLine: "newLine"
+    , newColumn: "newColumn"
+    , inputRemains : "inputRemains"
+    , discardUntil: "discardUntil"
+    , doMaxMunch : "doMaxMunch"
+    , isError : "isError"
+    , publish : "publish"
+    , makeMatcher : "makeMatcher"
+    , makeError : "makeError"
+    , lookupError : "lookupError"
+    }
+
+
 
 defineHelpers :: CodeState Unit
 defineHelpers = updateProgram helpers
@@ -30,7 +60,7 @@ helpers = Str.joinWith "\n"
         [ "This function calculates the new line position by looking at the lexeme"
         , "and counting the number of newlines in it"
         ]
-    , JS.function "newLine" ["munch", "oldLine"] 
+    , JS.function fn.newLine ["munch", "oldLine"] 
         [ JS.declareLet "count" "0"
         , "for(let i = 0; i < munch.lexeme.length; i++){"
         , JS.ifExpr "munch.lexeme[i] === '\\n'"
@@ -42,7 +72,7 @@ helpers = Str.joinWith "\n"
         [ "This function calculates the new column position by looking at the lexeme"
         , "and finding the number of characters AFTER the last newline"
         ]
-    , JS.function "newColumn" ["munch", "oldCol"] 
+    , JS.function fn.newColumn ["munch", "oldCol"] 
         [ JS.declareLet "index" "munch.lexeme.length"
         , JS.declareLet "foundNewline" "false"
         , JS.while "index > 0 && !foundNewline"
@@ -57,7 +87,7 @@ helpers = Str.joinWith "\n"
         , JS.thenExpr [ JS.return $ "munch.lexeme.length - index - 1"]
         , JS.elseExpr [ JS.return $ "oldCol + munch.lexeme.length"]
         ]
-    , JS.function "inputRemains" ["str"]
+    , JS.function fn.inputRemains ["str"]
         [ JS.return "str.length > 0"
         ]
     , JS.comment 
@@ -65,7 +95,7 @@ helpers = Str.joinWith "\n"
         , "the regex matches the syncing regex. Lexing should restart from"
         , "there"
         ]
-    , JS.function "discardUntil" ["str", "sync"]
+    , JS.function fn.discardUntil ["str", "sync"]
         [ JS.declareLet "search" "str"
         , JS.declareConst "discarded" "[]"
         , JS.while ("!str.test(" <> "sync" <> ") && str.length > 0")
@@ -85,7 +115,7 @@ helpers = Str.joinWith "\n"
         , "munch is identified, it returns an object containing the token type, the lexeme,"
         , "the column number, and the line number"
         ]
-    , JS.function "doMaxMunch" ["str", "line", "column"]
+    , JS.function fn.doMaxMunch ["str", "line", "column"]
         [ JS.declareLet "munch" $ 
             "Object.values(matchers)." <> (JS.call "reduce" 
                 [ JS.function "match" ["acc", "matcher"]
@@ -133,12 +163,12 @@ helpers = Str.joinWith "\n"
     , JS.comment 
         [ "This function determines whether a given munch is an error munch or not"
         ]
-    , JS.function "isError" ["munch"]
-        [ JS.return "lookupError(munch.type.toString()) !== null"
+    , JS.function fn.isError ["munch"]
+        [ JS.return $ fn.lookupError <> "(munch.type.toString()) !== null"
         ]
     
-    , JS.function "publish" ["munch", "tokens", "errors"]
-        [ JS.ifExpr $ JS.call "isError" ["munch"] 
+    , JS.function fn.publish ["munch", "tokens", "errors"]
+        [ JS.ifExpr $ JS.call fn.isError ["munch"] 
         , JS.thenExpr
             [ JS.call "publishError" ["munch", "errors"]
             ]
@@ -147,7 +177,7 @@ helpers = Str.joinWith "\n"
             ]
         , JS.function "publishError" ["munch", "errors"]
             [ (<>) "errors." $ JS.call "push" 
-                [ "`line ${munch.line}, column ${munch.column}: ${lookupError(munch.type)}`"
+                [ "`line ${munch.line}, column ${munch.column}: ${" <> fn.lookupError <> "(munch.type)}`"
                 ]
             ]
         , JS.function "publishToken" ["munch", "tokens"]
@@ -186,7 +216,7 @@ matchers = do
     updateProgram makeMatcher
     nonErrorTokenStore_ <- nonErrorTokenStore
     let
-        matchers_ = (flip map) nonErrorTokenStore_ (\tup -> (fst tup) <> ": " <> (JS.call "makeMatcher" [asToken $ fst tup, snd tup]) ) :: Array String
+        matchers_ = (flip map) nonErrorTokenStore_ (\tup -> (fst tup) <> ": " <> (JS.call fn.makeMatcher [asToken $ fst tup, snd tup]) ) :: Array String
         kv = Str.joinWith ",\n" matchers_
     pure $ JS.declareConst "matchers" ("{\n" <> kv <> "\n}")
 
@@ -207,7 +237,7 @@ matchers = do
         -- returns object containing token type and lexeme, or null if no match
         makeMatcher :: String
         makeMatcher = 
-            JS.function "makeMatcher" ["tokenName", "regex"]
+            JS.function fn.makeMatcher ["tokenName", "regex"]
                 [JS.return $
                     JS.function "matcher" ["input"] 
                         [ JS.declareConst "result" ((<>) "input." $ JS.call "match" ["regex"])
@@ -240,7 +270,7 @@ errors = do
                             message = fst $ snd tup
                         in  [name, "'" <> message <> "'"] 
                     )
-            in  JS.function "lookupError" ["type"]
+            in  JS.function fn.lookupError ["type"]
                     [ JS.declareConst "lookup" $ JS.obj kv
                     , JS.ifExpr "lookup[type] !== undefined"
                     , JS.thenExpr [ JS.return "lookup[type]" ]
@@ -259,7 +289,7 @@ errors = do
                         Nothing -> "undefined"
                         Just reg -> reg
                 in
-                    (name) <> ": " <> (JS.call "makeError" [asToken $ name, regex, sync ]) 
+                    (name) <> ": " <> (JS.call fn.makeError [asToken $ name, regex, sync ]) 
             )
         kv = Str.joinWith ",\n" errorMatchers
     pure $ JS.declareConst "errors" ("{\n" <> kv <> "\n}")
@@ -268,8 +298,8 @@ errors = do
         -- returns object containing error token type and lexeme (possibly including the discard to sync)
         makeError :: String
         makeError = 
-            JS.function "makeError" ["name", "regex", "sync"]
-                [ JS.declareConst "initialMatcher" $ JS.call "makeMatcher" ["name", "regex"]
+            JS.function fn.makeError ["name", "regex", "sync"]
+                [ JS.declareConst "initialMatcher" $ JS.call fn.makeMatcher ["name", "regex"]
                 , JS.return $ JS.function "matcher" ["input"]
                     [ JS.declareConst "initialResult" $ JS.call "initialMatcher" ["input"]
                     , JS.ifExpr "!sync || initialResult === null"

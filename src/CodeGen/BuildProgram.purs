@@ -3,11 +3,11 @@ module BuildProgram
 
     ) where
 
-import Control.Monad.State
+import Control.Monad.State (get)
 import Prelude
 import Data.String as Str
 
-import Definitions (defineErrors, defineHelpers, defineMatchers, defineTokens)
+import Definitions (defineErrors, defineHelpers, defineMatchers, defineTokens, fn)
 import JavaScript as JS
 import StoreInfo (CodeState)
 
@@ -30,12 +30,12 @@ writeLexer = do
                 , JS.declareConst "errors" "[]"
                 , JS.declareLet "line" "0"
                 , JS.declareLet "column" "0"
-                , JS.while (JS.call "inputRemains" ["str"])
-                    [ JS.declareLet "maxMunch" "doMaxMunch(str, line, column)"
+                , JS.while (JS.call fn.inputRemains ["str"])
+                    [ JS.declareLet "maxMunch" $ JS.call fn.doMaxMunch ["str", "line", "column"]
                     , JS.assign "str" "str.slice(maxMunch.lexeme.length)"
-                    , JS.call "publish" ["maxMunch", "tokens", "errors"]
-                    , JS.assign "line" $ JS.call "newLine" ["maxMunch", "line"]
-                    , JS.assign "column" $ JS.call "newColumn" ["maxMunch", "column"]
+                    , JS.call fn.publish ["maxMunch", "tokens", "errors"]
+                    , JS.assign "line" $ JS.call fn.newLine ["maxMunch", "line"]
+                    , JS.assign "column" $ JS.call fn.newColumn ["maxMunch", "column"]
                     ]
                 , JS.return $ JS.obj
                     [ "tokens", "tokens"
