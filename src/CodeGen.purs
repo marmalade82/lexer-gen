@@ -1,8 +1,6 @@
 module CodeGen 
     ( generate
-    , GenAST(..)
-    , Token(..)
-    , TokenType(..)
+    , module Types
     )
 
 where
@@ -25,6 +23,14 @@ import Data.String as Str
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..), fst, snd)
 import JavaScript as JS
+import StoreInfo 
+    ( storeInfo
+    , Context
+    , TokenNamesStore
+    , ErrorStore
+    , CodeState
+    )
+import Types (GenAST(..), Token, TokenType(..))
 
 
 {-  module for generating code from the AST
@@ -40,45 +46,8 @@ import JavaScript as JS
     only to unify types.
 -}
 
-data GenAST 
-    = Program (Array GenAST)
-    | NormalSpecs (Array GenAST)
-    | ErrorSpecs (Array GenAST)
-    | DefaultSpecs (Array GenAST)
-    | NormalSpec (Array GenAST)
-    | ErrorSpec (Array GenAST)
-    | DefaultError (Array GenAST)
-    | Name Token
-    | Regex Token
-    | ErrorMessage Token
-
-type Token = 
-    { type :: TokenType
-    , lexeme :: String
-    , line :: Int
-    , column :: Int
-    }
-
-data TokenType
-    = N
-    | R
-    | EM
-derive instance genericTokenType :: Generic TokenType _
-instance showTokenType :: Show TokenType where show = genericShow
-instance eqTokenType :: Eq TokenType where eq = genericEq
-
-
 generate :: GenAST -> String
 generate ast = evalState (doGenerate $ Just ast) initialContext
-
-type TokenNamesStore = Map.Map String String -- from token name to regex for it.
-type ErrorStore = Map.Map String (Tuple String (Maybe String)) -- from token name to error message and optional sync
-
-type Context = 
-    { program :: String
-    , names :: TokenNamesStore
-    , errors :: ErrorStore
-    }
 
 initialContext :: Context 
 initialContext =
@@ -91,24 +60,12 @@ initialContext =
         ]
     }
 
-type CodeState a = State Context a
-
-updateNames :: String -> String -> CodeState Unit
-updateNames token regex = do 
-    ctx <- get 
-    put $ ctx { names = Map.insert token regex ctx.names }
-
-updateErrors :: String -> String -> Maybe String -> CodeState Unit
-updateErrors name message sync = do 
-    ctx <- get
-    put $ ctx { errors = Map.insert name (Tuple message sync) ctx.errors }
-
 updateProgram :: String -> CodeState Unit
 updateProgram next = do 
     ctx <- get
     put $ ctx { program = ctx.program <> "\n" <> next }
 
--- generation should really lead to the emmision of strings to a file, line by line. Running
+-- generation should really lead to the emission of strings to a file, line by line. Running
 -- the file for its effects should determine whether the test passes or fails.
 doGenerate :: Maybe GenAST -> CodeState String
 doGenerate Nothing = do 
@@ -118,12 +75,8 @@ doGenerate (Just ast) = do
         Program arr ->
             let generated :: CodeState String
                 generated = do 
+                    storeInfo (Program arr)
                     updateProgram helpers
-                    -- we assume that code generation for the first 3 children will generate all the known
-                    -- token-regex-error pairings, that the program can then use to set up the algorithm.
-                    _ <- doGenerate $ head arr
-                    _ <- doGenerate $ (eHead 2) arr
-                    _ <- doGenerate $ (eHead 3) arr
                     exportTokenTypes_ <- exportTokenTypes -- for use by whatever parser
                     updateProgram exportTokenTypes_
                     matchers <- defineMatchers -- array of matcheres
@@ -411,92 +364,9 @@ doGenerate (Just ast) = do
                             let keys :: Array String
                                 keys = Array.fromFoldable $ Map.keys store
                             in  (flip map) keys (\key -> "export " <> (JS.declareConst (asToken key) ("\"" <> key <> "\"")))
-
-        NormalSpecs arr ->
-            let mapped :: (CodeState (Array String))
-                mapped = sequence (doGenerate <$> (Just <$> arr))
-
-                generated :: CodeState String
-                generated = do 
-                    arr_2 <- mapped
-                    pure $ Str.joinWith "\n" arr_2
-            in  generated
-        ErrorSpecs arr ->
-            let mapped :: (CodeState (Array String))
-                mapped = sequence (doGenerate <$> (Just <$> arr))
-            
-                generated :: CodeState String
-                generated = do 
-                    arr_2 <- mapped
-                    pure $ Str.joinWith "\n" arr_2
-            in  generated
-        DefaultSpecs arr -> -- default specs treats its children as a sequence, and that's all.
-            let mapped :: (CodeState (Array String))
-                mapped = sequence (doGenerate <$> (Just <$> arr))
-
-                generated :: CodeState String
-                generated = do 
-                    arr_2 <- mapped
-                    pure $ Str.joinWith "\n" arr_2
-            in  generated
-        NormalSpec arr -> 
-            let generated :: CodeState String
-                generated = do 
-                    name <- generateName $ head arr
-                    regex <- generateRegex $ (eHead 2) arr
-                    registerTokenRegex name regex
-                    pure ""
-            in  generated
-        ErrorSpec arr -> 
-            let generated :: CodeState String
-                generated = do 
-                    name <- generateName $ head arr
-                    message <- generateMessage $ (eHead 2) arr
-                    sync <- generateName $ (eHead 3) arr
-                    registerTokenError name message sync
-                    pure ""
-            in  generated
-        DefaultError arr -> 
-            let generated :: CodeState String
-                generated = do
-                    message <- generateMessage $ head arr
-                    sync <- generateName $ (eHead 2) arr
-                    registerTokenError "_default" message sync
-                    pure ""
-            in  generated
-
-        
-        Name tok -> do 
-            pure "" 
-        Regex tok -> pure ""
-        ErrorMessage tok -> pure ""
-
-    where 
-        generateName :: Maybe GenAST -> CodeState String
-        generateName (Just (Name tok)) = pure tok.lexeme
-        generateName _ = pure ""
-
-        generateRegex :: Maybe GenAST -> CodeState String
-        generateRegex (Just (Regex tok)) = pure $ "new RegExp(" <> tok.lexeme <> ")"
-        generateRegex _ = pure ""
-
-        registerTokenRegex :: String -> String -> CodeState Unit
-        registerTokenRegex name regex = do 
-            updateNames name regex
-
-        generateMessage :: Maybe GenAST -> CodeState String
-        generateMessage (Just (ErrorMessage tok)) = pure tok.lexeme
-        generateMessage _ = pure ""
-
-        -- Writes the error into global state so we can define error functions later
-        registerTokenError :: String -> String -> String -> CodeState Unit
-        registerTokenError name message sync = do 
-            updateErrors name message $ case sync of 
-                "" -> Nothing
-                x -> Just x
-
-eHead :: forall a. Int -> Array a -> Maybe a
-eHead = flip index
+        x -> do 
+            storeInfo x
+            pure ""
 
 asToken :: String -> String
 asToken name = name
