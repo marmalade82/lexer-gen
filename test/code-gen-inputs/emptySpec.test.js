@@ -13,7 +13,7 @@ describe("Lexing input with an empty lexer", () => {
 
   test("existing input fails", () => {
     const result = lex(MyInput);
-    expect(result.tokens.length).toEqual(0);
+    expect(result.tokens).toEqual([]);
     expect(result.errors.length).toEqual(1);
   });
 });

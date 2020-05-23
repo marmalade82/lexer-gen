@@ -2,8 +2,8 @@ export function lex(input) {
   let str = input;
   const tokens = [];
   const errors = [];
-  const line = 0;
-  const column = 0;
+  let line = 0;
+  let column = 0;
   while (inputRemains(str)) {
     let maxMunch = doMaxMunch(str, line, column);
     str = str.slice(maxMunch.lexeme.length);
@@ -143,7 +143,7 @@ function publish(munch, tokens, errors) {
     tokens.push(munch);
   }
 }
-
+export const _default = "_default";
 function makeMatcher(tokenName, regex) {
   return function matcher(input) {
     const result = input.match(regex);
@@ -174,11 +174,15 @@ function makeError(name, regex, sync) {
   };
 }
 function lookupError(type) {
-  const lookup = {};
+  const lookup = {
+    _default: "No match for any token",
+  };
   if (lookup[type] !== undefined) {
     return lookup[type];
   } else {
     return null;
   }
 }
-const errors = {};
+const errors = {
+  _default: makeError(_default, new RegExp(".*"), undefined),
+};

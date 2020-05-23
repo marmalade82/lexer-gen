@@ -68,7 +68,7 @@ instance eqTokenType :: Eq TokenType where eq = genericEq
 
 
 generate :: GenAST -> String
-generate ast = evalState (doGenerate $ Just ast) { program: "", names: Map.empty, errors: Map.empty }
+generate ast = evalState (doGenerate $ Just ast) initialContext
 
 type TokenNamesStore = Map.Map String String -- from token name to regex for it.
 type ErrorStore = Map.Map String (Tuple String (Maybe String)) -- from token name to error message and optional sync
@@ -145,6 +145,7 @@ doGenerate (Just ast) = do
 
 
                     where 
+                        -- 
                         nonErrorTokenStore :: CodeState (Array (Tuple String String))
                         nonErrorTokenStore = do 
                             ctx <- get
@@ -246,8 +247,8 @@ doGenerate (Just ast) = do
                                 [ declareLet "str" "input"
                                 , declareConst "tokens" "[]"
                                 , declareConst "errors" "[]"
-                                , declareConst "line" "0"
-                                , declareConst "column" "0"
+                                , declareLet "line" "0"
+                                , declareLet "column" "0"
                                 , while (call "inputRemains" ["str"])
                                     [ declareLet "maxMunch" "doMaxMunch(str, line, column)"
                                     , assign "str" "str.slice(maxMunch.lexeme.length)"
@@ -408,7 +409,7 @@ doGenerate (Just ast) = do
                         doExport store = 
                             let keys :: Array String
                                 keys = Array.fromFoldable $ Map.keys store
-                            in  (flip map) keys (\key -> "export " <> declareConst (asToken key) key <> ";")
+                            in  (flip map) keys (\key -> "export " <> (declareConst (asToken key) ("\"" <> key <> "\"")))
 
         NormalSpecs arr ->
             let mapped :: (CodeState (Array String))
