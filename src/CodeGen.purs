@@ -129,7 +129,9 @@ doGenerate (Just ast) = do
                     updateProgram matchers
                     errors <- defineErrors
                     updateProgram errors
-                    pure $ makeProgram "" "" ""
+                    ctx <- get
+                    pure $ 
+                        makeProgram "" "" "" <> "\n\n" <> ctx.program
             in  generated
             where
                 defineMatchers :: CodeState String
