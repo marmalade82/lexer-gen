@@ -207,33 +207,33 @@ exportTokenTypes = do
 
 defineMatchers :: CodeState Unit
 defineMatchers = do
+    defineMakeMatcher
     definitions <- matchers
     updateProgram definitions
+    where
+        matchers :: CodeState String
+        matchers = do
+            nonErrorTokenStore_ <- nonErrorTokenStore
+            let
+                matchers_ = (flip map) nonErrorTokenStore_ (\tup -> (fst tup) <> ": " <> (JS.call fn.makeMatcher [asToken $ fst tup, snd tup]) ) :: Array String
+                kv = Str.joinWith ",\n" matchers_
+            pure $ JS.declareConst "matchers" ("{\n" <> kv <> "\n}")
+            where 
+                -- 
+                nonErrorTokenStore :: CodeState (Array (Tuple String String))
+                nonErrorTokenStore = do 
+                    ctx <- get
+                    let allTokenStore = Map.toUnfoldable ctx.names :: Array (Tuple String String)
+                        errorStore = ctx.errors
+                        nonErrorStore = (flip Array.filter) allTokenStore 
+                                            (\x@(Tuple name _) -> 
+                                                (Map.lookup name errorStore) == Nothing
+                                            )
+                    pure nonErrorStore
 
-
-matchers :: CodeState String
-matchers = do
-    updateProgram makeMatcher
-    nonErrorTokenStore_ <- nonErrorTokenStore
-    let
-        matchers_ = (flip map) nonErrorTokenStore_ (\tup -> (fst tup) <> ": " <> (JS.call fn.makeMatcher [asToken $ fst tup, snd tup]) ) :: Array String
-        kv = Str.joinWith ",\n" matchers_
-    pure $ JS.declareConst "matchers" ("{\n" <> kv <> "\n}")
-
-
-    where 
-        -- 
-        nonErrorTokenStore :: CodeState (Array (Tuple String String))
-        nonErrorTokenStore = do 
-            ctx <- get
-            let allTokenStore = Map.toUnfoldable ctx.names :: Array (Tuple String String)
-                errorStore = ctx.errors
-                nonErrorStore = (flip Array.filter) allTokenStore 
-                                    (\x@(Tuple name _) -> 
-                                        (Map.lookup name errorStore) == Nothing
-                                    )
-            pure nonErrorStore
-        -- given name and regex, defines a function that, given the input string,
+defineMakeMatcher :: CodeState Unit
+defineMakeMatcher = do
+    let -- given name and regex, defines a function that, given the input string,
         -- returns object containing token type and lexeme, or null if no match
         makeMatcher :: String
         makeMatcher = 
@@ -250,53 +250,42 @@ matchers = do
                         , JS.elseExpr [ JS.return "null" ]
                         ]
                 ]
+    updateProgram makeMatcher
+
+
 
 defineErrors :: CodeState Unit
 defineErrors = do 
+    defineMakeError
+    defineLookupError
     definitions <- errors
     updateProgram definitions
-
-
-errors :: CodeState String
-errors = do 
-    updateProgram makeError
-    ctx <- get
-    let regexStore = ctx.names
-        errorStore = Map.toUnfoldable ctx.errors  :: Array (Tuple String (Tuple String (Maybe String)))
-        errorLookup = 
-            let kv = (flip concatMap) errorStore
-                    (\tup -> 
-                        let name = fst tup
-                            message = fst $ snd tup
-                        in  [name, "'" <> message <> "'"] 
-                    )
-            in  JS.function fn.lookupError ["type"]
-                    [ JS.declareConst "lookup" $ JS.obj kv
-                    , JS.ifExpr "lookup[type] !== undefined"
-                    , JS.thenExpr [ JS.return "lookup[type]" ]
-                    , JS.elseExpr [ JS.return "null" ]
-                    ]
-    updateProgram errorLookup
-    let errorMatchers = (flip map) errorStore 
-            (\tup -> 
-                let 
-                    name = fst tup
-                    regex = case Map.lookup name regexStore of 
-                        Nothing -> "undefined"
-                        Just reg -> reg
-                    message = fst $ snd tup
-                    sync = case snd $ snd tup of 
-                        Nothing -> "undefined"
-                        Just reg -> reg
-                in
-                    (name) <> ": " <> (JS.call fn.makeError [asToken $ name, regex, sync ]) 
-            )
-        kv = Str.joinWith ",\n" errorMatchers
-    pure $ JS.declareConst "errors" ("{\n" <> kv <> "\n}")
     where
-        -- given name, regex, and sync regex
-        -- returns object containing error token type and lexeme (possibly including the discard to sync)
-        makeError :: String
+        errors :: CodeState String
+        errors = do 
+            ctx <- get
+            let regexStore = ctx.names
+                errorStore = Map.toUnfoldable ctx.errors  :: Array (Tuple String (Tuple String (Maybe String)))
+            let errorMatchers = (flip map) errorStore 
+                    (\tup -> 
+                        let 
+                            name = fst tup
+                            regex = case Map.lookup name regexStore of 
+                                Nothing -> "undefined"
+                                Just reg -> reg
+                            message = fst $ snd tup
+                            sync = case snd $ snd tup of 
+                                Nothing -> "undefined"
+                                Just reg -> reg
+                        in
+                            (name) <> ": " <> (JS.call fn.makeError [asToken $ name, regex, sync ]) 
+                    )
+                kv = Str.joinWith ",\n" errorMatchers
+            pure $ JS.declareConst "errors" ("{\n" <> kv <> "\n}")
+
+defineMakeError :: CodeState Unit
+defineMakeError = do 
+    let makeError :: String
         makeError = 
             JS.function fn.makeError ["name", "regex", "sync"]
                 [ JS.declareConst "initialMatcher" $ JS.call fn.makeMatcher ["name", "regex"]
@@ -313,6 +302,26 @@ errors = do
                         ]
                     ]
                 ]
+    updateProgram makeError
+
+defineLookupError :: CodeState Unit
+defineLookupError = do
+    ctx <- get
+    let errorStore = Map.toUnfoldable ctx.errors  :: Array (Tuple String (Tuple String (Maybe String)))
+        errorLookup = 
+            let kv = (flip concatMap) errorStore
+                    (\tup -> 
+                        let name = fst tup
+                            message = fst $ snd tup
+                        in  [name, "'" <> message <> "'"] 
+                    )
+            in  JS.function fn.lookupError ["type"]
+                    [ JS.declareConst "lookup" $ JS.obj kv
+                    , JS.ifExpr "lookup[type] !== undefined"
+                    , JS.thenExpr [ JS.return "lookup[type]" ]
+                    , JS.elseExpr [ JS.return "null" ]
+                    ]
+    updateProgram errorLookup
 
 
 updateProgram :: String -> CodeState Unit
