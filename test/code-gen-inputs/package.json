@@ -4,7 +4,8 @@
   "description": "Package for testing code generation",
   "main": "index.js",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "pretty": "prettier --write ."
   },
   "author": "Howard Chen",
   "license": "ISC",
@@ -12,7 +13,8 @@
     "@babel/core": "^7.9.6",
     "@babel/preset-env": "^7.9.6",
     "babel-jest": "^25.5.1",
-    "jest": "^25.5.3"
+    "jest": "^25.5.3",
+    "prettier": "^2.0.5"
   },
   "dependencies": {}
 }

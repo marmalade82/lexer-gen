@@ -528,7 +528,7 @@ elseExpr body = Str.joinWith "\n"
 function :: String -> Array String -> Array String -> String
 function name args body = 
     let args_ = Str.joinWith ", " args
-        body_ = Str.joinWith "\n" body
+        body_ = "\t" <> Str.joinWith "\n\t" body
     in  Str.joinWith "\n" 
             [ "function " <> name <> "(" <> args_ <> ") {"
             , body_
@@ -552,9 +552,12 @@ comment body =
             , "*/"
             ]
 
+tab :: String
+tab = "    "
+
 while :: String -> Array String -> String
 while cond body = 
-    let body_ = Str.joinWith "\n" body
+    let body_ = tab <> Str.joinWith ("\n" <> tab) body
     in  Str.joinWith "\n"
             [ "while(" <> cond <> "){"
             , body_
