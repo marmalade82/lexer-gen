@@ -3,7 +3,7 @@ module Test.CodeGenSpec where
 
 import Prelude
 
-import CodeGen (generate, GenAST(..))
+import CodeGen (GenAST(..), TokenType(..), generate)
 import Data.Array.NonEmpty (appendArray, singleton)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
@@ -28,7 +28,7 @@ import Node.Path (FilePath)
 import Node.Path as Path
 import Node.Process as Process
 import Node.Stream as Stream
-import Test.Spec (Spec, describe, it, pending)
+import Test.Spec (Spec, after_, describe, it, pending)
 import Test.Spec.Assertions (shouldEqual)
 
 {- Tests for this module need to generate a test tokenizing module in ES6,
@@ -36,67 +36,55 @@ import Test.Spec.Assertions (shouldEqual)
     tests in that folder, and report the results of the jest tests
 -}
 spec :: Spec Unit
-spec = describe "Code generation" do 
-    emptySpec
+spec = after_ waitForPrettier $ describe "Code generation" do 
+    --emptySpec
+    oneTokenSpec
     pure unit
 
 emptySpec :: Spec Unit
 emptySpec = describe "Without any token definitions" do 
-    it "Correct errors are generated" do 
-        _ <- generateProgram
-        result <- waitForChildProcess
+    it "Tests succeed" do 
+        let program = Program []
+        _ <- generateLexer program "emptySpec.js"
+        result <- runTest "test-empty"
         result `shouldEqual` true
 
-generateProgram :: Aff.Aff Unit
-generateProgram = do
+oneTokenSpec :: Spec Unit
+oneTokenSpec = describe "With one token defined" do 
+    it "Tests succeed" do 
+        let program = Program 
+                [ NormalSpecs 
+                    [ NormalSpec
+                        [ Name { type: N, lexeme: "me", line: 0, column: 0 }
+                        , Regex { type: R, lexeme: "I", line: 3, column: 3 }
+                        ]
+                    ]
+                ]
+        _ <- generateLexer program "oneTokenSpec.js"
+        result <- runTest "test-one"
+        result `shouldEqual` true
+
+generateLexer :: GenAST -> String -> Aff.Aff Unit
+generateLexer ast fileName = do
     liftEffect $ do
-        let program = Program []
+        let program = ast
             generated = generate program :: String
-        file <- Path.resolve [__dirname] "../../test/code-gen-inputs/emptySpec.js"
+        file <- Path.resolve [__dirname] ("../../test/code-gen-inputs/" <> fileName)
         exists <- FS.exists file 
         if exists
         then FS.truncate file 0
         else FS.writeTextFile UTF8 file ""
         FS.writeTextFile UTF8 file generated
         pure unit
-    waitForPrettier
 
-getCwd :: Effect FilePath
-getCwd = Path.resolve [__dirname] "../../test/code-gen-inputs"
-
-waitForPrettier :: Aff.Aff Unit
-waitForPrettier = Aff.makeAff 
-    (\emit -> do
-        cwd <- getCwd
-        cp <- CP.spawn "npm.cmd" ["run", "pretty"]
-            { cwd : Just cwd
-            , detached: false
-            , env: Nothing
-            , gid: Nothing
-            , stdio: CP.ignore
-            , uid: Nothing
-            }
-        CP.onExit cp 
-                (\exit -> do 
-                    log "exiting"
-                    emit $ Right unit
-                )
-        CP.onError cp 
-            (\error -> do 
-                log "erroring"
-                emit $ Right unit
-            )
-        pure Aff.nonCanceler
-    )
-
-waitForChildProcess :: Aff.Aff Boolean
-waitForChildProcess = Aff.makeAff 
+runTest :: String -> Aff.Aff Boolean
+runTest testCommand = Aff.makeAff 
     (\emit -> do
         cwd <- getCwd
         liftEffect $ log cwd
         -- This should cause the tests to run
         -- Since this will run asynchronously, we really want to lift this into Aff
-        cp <- CP.spawn "npm.cmd" ["run", "test"]
+        cp <- CP.spawn "npm.cmd" ["run", testCommand]
             { cwd : Just cwd
             , detached: false
             , env: Nothing
@@ -124,5 +112,34 @@ waitForChildProcess = Aff.makeAff
                 emit (Right false)
             )
 
+        pure Aff.nonCanceler
+    )
+
+
+getCwd :: Effect FilePath
+getCwd = Path.resolve [__dirname] "../../test/code-gen-inputs"
+
+waitForPrettier :: Aff.Aff Unit
+waitForPrettier = Aff.makeAff 
+    (\emit -> do
+        cwd <- getCwd
+        cp <- CP.spawn "npm.cmd" ["run", "pretty"]
+            { cwd : Just cwd
+            , detached: false
+            , env: Nothing
+            , gid: Nothing
+            , stdio: CP.ignore
+            , uid: Nothing
+            }
+        CP.onExit cp 
+                (\exit -> do 
+                    log "exiting"
+                    emit $ Right unit
+                )
+        CP.onError cp 
+            (\error -> do 
+                log "erroring"
+                emit $ Right unit
+            )
         pure Aff.nonCanceler
     )

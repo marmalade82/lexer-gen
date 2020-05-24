@@ -4,7 +4,8 @@
   "description": "Package for testing code generation",
   "main": "index.js",
   "scripts": {
-    "test": "jest",
+    "test-empty": "jest emptySpec.test.js",
+    "test-one": "jest oneTokenSpec.test.js",
     "pretty": "prettier --write ."
   },
   "author": "Howard Chen",

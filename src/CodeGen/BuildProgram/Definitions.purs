@@ -241,7 +241,7 @@ defineMakeMatcher = do
                 [JS.return $
                     JS.function "matcher" ["input"] 
                         [ JS.declareConst "result" ((<>) "input." $ JS.call "match" ["regex"])
-                        , JS.ifExpr "result.length > 0"
+                        , JS.ifExpr "result && result.length > 0"
                         , JS.thenExpr 
                             [ JS.return $ JS.obj 
                                 [ "type", "tokenName"

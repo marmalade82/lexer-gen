@@ -48,16 +48,16 @@ storeInfo ast = case ast of
             pure unit
         NormalSpec arr -> do
             name <- generateName $ head arr
-            regex <- generateRegex $ (eHead 2) arr
+            regex <- generateRegex $ (eHead 1) arr
             registerTokenRegex name regex
         ErrorSpec arr -> do 
             name <- generateName $ head arr
-            message <- generateMessage $ (eHead 2) arr
-            sync <- generateName $ (eHead 3) arr
+            message <- generateMessage $ (eHead 1) arr
+            sync <- generateName $ (eHead 2) arr
             registerTokenError name message sync
         DefaultError arr -> do 
             message <- generateMessage $ head arr
-            sync <- generateName $ (eHead 2) arr
+            sync <- generateName $ (eHead 1) arr
             registerTokenError "_default" message sync
         _ -> pure unit
     where 
@@ -69,7 +69,7 @@ generateName (Just (Name tok)) = pure tok.lexeme
 generateName _ = pure ""
 
 generateRegex :: Maybe GenAST -> CodeState String
-generateRegex (Just (Regex tok)) = pure $ "new RegExp(" <> tok.lexeme <> ")"
+generateRegex (Just (Regex tok)) = pure $ "new RegExp(" <> "\"" <> tok.lexeme <> "\"" <> ")"
 generateRegex _ = pure ""
 
 generateMessage :: Maybe GenAST -> CodeState String

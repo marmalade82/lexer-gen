@@ -61,8 +61,6 @@ updateProgram next = do
     ctx <- get
     put $ ctx { program = ctx.program <> "\n" <> next }
 
--- generation should really lead to the emission of strings to a file, line by line. Running
--- the file for its effects should determine whether the test passes or fails.
 doGenerate :: Maybe GenAST -> CodeState String
 doGenerate Nothing = do 
     pure ""
