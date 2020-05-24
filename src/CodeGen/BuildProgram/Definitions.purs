@@ -127,11 +127,12 @@ helpers = Str.joinWith "\n"
                         ]
                     , JS.return "acc"
                     ]
-                , JS.obj   [ "line",      "line" 
-                        , "column",    "column"
-                        , "type",      "undefined"
-                        , "lexeme",    " '' "
-                        ]
+                , JS.obj   
+                    [ "line",      "line" 
+                    , "column",    "column"
+                    , "type",      "undefined"
+                    , "lexeme",    " '' "
+                    ]
                 ])
 
         , JS.ifExpr $ "munch.type === undefined"
