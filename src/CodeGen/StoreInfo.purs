@@ -69,7 +69,7 @@ generateName (Just (Name tok)) = pure tok.lexeme
 generateName _ = pure ""
 
 generateRegex :: Maybe GenAST -> CodeState String
-generateRegex (Just (Regex tok)) = pure $ "new RegExp(" <> "\"" <> tok.lexeme <> "\"" <> ")"
+generateRegex (Just (Regex tok)) = pure $ "new RegExp(" <> "\"^" <> tok.lexeme <> "\"" <> ")"
 generateRegex _ = pure ""
 
 generateMessage :: Maybe GenAST -> CodeState String

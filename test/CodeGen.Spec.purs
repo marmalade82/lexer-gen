@@ -39,6 +39,7 @@ spec :: Spec Unit
 spec = after_ waitForPrettier $ describe "Code generation" do 
     --emptySpec
     oneTokenSpec
+    twoTokenSpec
     pure unit
 
 emptySpec :: Spec Unit
@@ -62,6 +63,25 @@ oneTokenSpec = describe "With one token defined" do
                 ]
         _ <- generateLexer program "oneTokenSpec.js"
         result <- runTest "test-one"
+        result `shouldEqual` true
+
+twoTokenSpec :: Spec Unit
+twoTokenSpec = describe "With two tokens defined" do 
+    it "Tests succeed" do 
+        let program = Program
+                [ NormalSpecs 
+                    [ NormalSpec
+                        [ Name { type: N, lexeme: "me", line: 0, column: 0 }
+                        , Regex { type: R, lexeme: "I", line: 3, column: 3 }
+                        ]
+                    , NormalSpec
+                        [ Name { type: N, lexeme: "verb", line: 0, column: 0 }
+                        , Regex { type: R, lexeme: "am", line: 3, column: 3 }
+                        ]
+                    ]
+                ]
+        _ <- generateLexer program "twoTokenSpec.js"
+        result <- runTest "test-two"
         result `shouldEqual` true
 
 generateLexer :: GenAST -> String -> Aff.Aff Unit

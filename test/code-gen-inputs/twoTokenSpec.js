@@ -145,6 +145,7 @@ function publish(munch, tokens, errors) {
 }
 export const _default = "_default";
 export const me = "me";
+export const verb = "verb";
 function makeMatcher(tokenName, regex) {
   return function matcher(input) {
     const result = input.match(regex);
@@ -160,6 +161,7 @@ function makeMatcher(tokenName, regex) {
 }
 const matchers = {
   me: makeMatcher(me, new RegExp("^I")),
+  verb: makeMatcher(verb, new RegExp("^am")),
 };
 function makeError(name, regex, sync) {
   const initialMatcher = makeMatcher(name, regex);

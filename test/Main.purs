@@ -8,14 +8,13 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
 import Effect (Effect)
 import Effect.Aff (Milliseconds(..), launchAff_)
-import Effect.Class.Console (log)
 import Test.Spec.Discovery (discover)
 import Test.Spec.Reporter.Console (consoleReporter)
-import Test.Spec.Runner (runSpec, runSpecT)
+import Test.Spec.Runner (runSpecT)
 
 main :: Effect Unit
 main = launchAff_ do
   specs <- discover ".*Spec"
   un Identity $ runSpecT testConfig [consoleReporter] specs
   where
-      testConfig = { slow: Milliseconds $ toNumber 5000 , timeout: Just $ Milliseconds $ toNumber 10000, exit: false }
+      testConfig = { slow: Milliseconds $ toNumber 5000 , timeout: Just $ Milliseconds $ toNumber 15000, exit: false }

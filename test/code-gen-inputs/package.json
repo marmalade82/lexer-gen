@@ -6,6 +6,7 @@
   "scripts": {
     "test-empty": "jest emptySpec.test.js",
     "test-one": "jest oneTokenSpec.test.js",
+    "test-two": "jest twoTokenSpec.test.js",
     "pretty": "prettier --write ."
   },
   "author": "Howard Chen",

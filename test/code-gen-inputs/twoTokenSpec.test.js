@@ -1,6 +1,6 @@
-import lex from "./oneTokenSpec";
+import lex from "./twoTokenSpec";
 
-describe("Lexing input with a one-token lexer", () => {
+describe("Lexing input with a two-token lexer", () => {
   test("empty input succeeds", () => {
     const input = "";
     const result = lex(input);
@@ -9,24 +9,24 @@ describe("Lexing input with a one-token lexer", () => {
     expect(result.errors.length).toEqual(0);
   });
 
-  test("existing input fails after recognizing one token", () => {
-    const MyInput = `I am a hippopatamus `;
+  test("existing input fails after recognizing two tokens", () => {
+    const MyInput = `Iam a hippopatamus `;
     const result = lex(MyInput);
-    expect(result.tokens.length).toEqual(1);
+    expect(result.tokens.length).toEqual(2);
     expect(result.errors.length).toEqual(1);
   });
 
-  test("existing input fails after recognizing three tokens", () => {
-    const MyInput = `III am a hippopatamus `;
+  test("existing input fails after recognizing four tokens", () => {
+    const MyInput = `IamamI a hippopatamus `;
     const result = lex(MyInput);
-    expect(result.tokens.length).toEqual(3);
+    expect(result.tokens.length).toEqual(4);
     expect(result.errors.length).toEqual(1);
   });
 
   test("existing input succeeds after recognizing everything", () => {
-    const MyInput = `III`;
+    const MyInput = `IIIam`;
     const result = lex(MyInput);
-    expect(result.tokens.length).toEqual(3);
+    expect(result.tokens.length).toEqual(4);
     expect(result.errors.length).toEqual(0);
   });
 });
