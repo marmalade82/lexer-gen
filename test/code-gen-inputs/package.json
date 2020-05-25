@@ -4,9 +4,14 @@
   "description": "Package for testing code generation",
   "main": "index.js",
   "scripts": {
+    "test": "jest",
     "test-empty": "jest emptySpec.test.js",
     "test-one": "jest oneTokenSpec.test.js",
     "test-two": "jest twoTokenSpec.test.js",
+    "test-default-sync": "jest defaultErrorSyncSpec.test.js",
+    "test-default-nosync": "jest defaultErrorNoSyncSpec.test.js",
+    "test-custom-sync": "jest customErrorSyncSpec.test.js",
+    "test-custom-nosync": "jest customErrorNoSyncSpec.test.js",
     "pretty": "prettier --write ."
   },
   "author": "Howard Chen",

@@ -144,6 +144,7 @@ function publish(munch, tokens, errors) {
   }
 }
 export const _default = "_default";
+export const space = "space";
 function makeMatcher(tokenName, regex) {
   return function matcher(input) {
     const result = input.match(regex);
@@ -157,7 +158,9 @@ function makeMatcher(tokenName, regex) {
     }
   };
 }
-const matchers = {};
+const matchers = {
+  space: makeMatcher(space, new RegExp("^ ")),
+};
 function makeError(name, regex, sync) {
   const initialMatcher = makeMatcher(name, regex);
   return function matcher(input) {
@@ -176,7 +179,7 @@ function makeError(name, regex, sync) {
 }
 function lookupError(type) {
   const lookup = {
-    _default: "No match for any token",
+    _default: "I am an error",
   };
   if (lookup[type] !== undefined) {
     return lookup[type];
@@ -185,5 +188,5 @@ function lookupError(type) {
   }
 }
 const errors = {
-  _default: makeError(_default, new RegExp(".*"), undefined),
+  _default: makeError(_default, new RegExp(".*"), space),
 };

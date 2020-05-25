@@ -37,9 +37,11 @@ import Test.Spec.Assertions (shouldEqual)
 -}
 spec :: Spec Unit
 spec = after_ waitForPrettier $ describe "Code generation" do 
-    --emptySpec
+    emptySpec
     oneTokenSpec
     twoTokenSpec
+    defaultErrorSpec
+    customErrorsSpec
     pure unit
 
 emptySpec :: Spec Unit
@@ -83,6 +85,105 @@ twoTokenSpec = describe "With two tokens defined" do
         _ <- generateLexer program "twoTokenSpec.js"
         result <- runTest "test-two"
         result `shouldEqual` true
+
+defaultErrorSpec :: Spec Unit
+defaultErrorSpec = describe "Replace default error" do 
+    it "With sync" do 
+        let program = Program
+                [ NormalSpecs 
+                    [ NormalSpec
+                        [ Name { type: N, lexeme: "space",  line: 0, column: 0 }
+                        , Regex { type: R, lexeme: " ", line: 3, column: 3 }
+                        ]
+
+                    ]
+                , DefaultSpecs
+                    [ DefaultError
+                        [ ErrorMessage { type: EM, lexeme: "I am an error", line: 0, column: 0}
+                        , Name { type: N, lexeme: "space", line: 3, column: 3}
+                        ]
+                    ]
+                ]
+        _ <- generateLexer program "defaultErrorSyncSpec.js"
+        result <- runTest "test-default-sync"
+        result `shouldEqual` true
+    it "Without sync" do 
+        let program = Program
+                [ DefaultSpecs
+                    [ DefaultError
+                        [ ErrorMessage { type: EM, lexeme: "I am an error", line: 0, column: 0}
+                        ]
+                    ]
+                ]
+        _ <- generateLexer program "defaultErrorNoSyncSpec.js"
+        result <- runTest "test-default-nosync"
+        result `shouldEqual` true
+
+customErrorsSpec :: Spec Unit
+customErrorsSpec = describe "Custom errors" do
+  it "With sync" do
+    let program = Program
+            [ NormalSpecs
+                [ NormalSpec
+                    [ Name { type: N, lexeme: "me", line: 0, column: 0 }
+                    , Regex { type: R, lexeme: "I", line: 3, column: 3 }
+                    ]
+                , NormalSpec
+                    [ Name { type: N, lexeme: "verb", line: 0, column: 0 }
+                    , Regex { type: R, lexeme: "am", line: 3, column: 3 }
+                    ]
+                , NormalSpec
+                    [ Name { type: N, lexeme: "space", line: 0, column: 0 }
+                    , Regex { type: R, lexeme: " ", line: 3, column: 3 }
+                    ]
+                ]
+            , ErrorSpecs
+                [ ErrorSpec
+                    [ Name { type: N, lexeme: "me", line: 0, column: 0}
+                    , ErrorMessage { type: EM, lexeme: "Error 1", line: 3, column: 3}
+                    , Name { type: N, lexeme: "space", line: 3, column: 3}
+                    ]
+                , ErrorSpec
+                    [ Name { type: N, lexeme: "verb", line: 0, column: 0}
+                    , ErrorMessage { type: EM, lexeme: "Error 2", line: 3, column: 3}
+                    , Name { type: N, lexeme: "space", line: 3, column: 3}
+                    ]
+                ]
+            ]
+    _ <- generateLexer program "customErrorSyncSpec.js"
+    result <- runTest "test-custom-sync"
+    result `shouldEqual` true
+  it "Without sync" do 
+    let program = Program
+            [ NormalSpecs
+                [ NormalSpec
+                    [ Name { type: N, lexeme: "me", line: 0, column: 0 }
+                    , Regex { type: R, lexeme: "I", line: 3, column: 3 }
+                    ]
+                , NormalSpec
+                    [ Name { type: N, lexeme: "verb", line: 0, column: 0 }
+                    , Regex { type: R, lexeme: "am", line: 3, column: 3 }
+                    ]
+                , NormalSpec
+                    [ Name { type: N, lexeme: "space", line: 0, column: 0 }
+                    , Regex { type: R, lexeme: " ", line: 3, column: 3 }
+                    ]
+                ]
+            , ErrorSpecs
+                [ ErrorSpec
+                    [ Name { type: N, lexeme: "me", line: 0, column: 0}
+                    , ErrorMessage { type: EM, lexeme: "Error 1", line: 3, column: 3}
+                    ]
+                , ErrorSpec
+                    [ Name { type: N, lexeme: "verb", line: 0, column: 0}
+                    , ErrorMessage { type: EM, lexeme: "Error 2", line: 3, column: 3}
+                    ]
+                ]
+            ]
+    _ <- generateLexer program "customErrorNoSyncSpec.js"
+    result <- runTest "test-custom-nosync"
+    result `shouldEqual` true
+
 
 generateLexer :: GenAST -> String -> Aff.Aff Unit
 generateLexer ast fileName = do

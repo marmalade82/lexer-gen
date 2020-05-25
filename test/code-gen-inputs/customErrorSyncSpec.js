@@ -144,6 +144,9 @@ function publish(munch, tokens, errors) {
   }
 }
 export const _default = "_default";
+export const me = "me";
+export const space = "space";
+export const verb = "verb";
 function makeMatcher(tokenName, regex) {
   return function matcher(input) {
     const result = input.match(regex);
@@ -157,7 +160,9 @@ function makeMatcher(tokenName, regex) {
     }
   };
 }
-const matchers = {};
+const matchers = {
+  space: makeMatcher(space, new RegExp("^ ")),
+};
 function makeError(name, regex, sync) {
   const initialMatcher = makeMatcher(name, regex);
   return function matcher(input) {
@@ -176,6 +181,8 @@ function makeError(name, regex, sync) {
 }
 function lookupError(type) {
   const lookup = {
+    verb: "Error 2",
+    me: "Error 1",
     _default: "No match for any token",
   };
   if (lookup[type] !== undefined) {
@@ -186,4 +193,6 @@ function lookupError(type) {
 }
 const errors = {
   _default: makeError(_default, new RegExp(".*"), undefined),
+  me: makeError(me, new RegExp("^I"), space),
+  verb: makeError(verb, new RegExp("^am"), space),
 };

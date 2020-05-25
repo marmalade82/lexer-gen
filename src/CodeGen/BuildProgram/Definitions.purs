@@ -95,10 +95,10 @@ helpers = Str.joinWith "\n"
         , "the regex matches the syncing regex. Lexing should restart from"
         , "there"
         ]
-    , JS.function fn.discardUntil ["str", "sync"]
+    , JS.function fn.discardUntil ["str", "syncMatcher"]
         [ JS.declareLet "search" "str"
         , JS.declareConst "discarded" "[]"
-        , JS.while ("!str.test(" <> "sync" <> ") && str.length > 0")
+        , JS.while ("!" <> (JS.call "syncMatcher" $ ["search"]) <> " && search.length > 0")
             [ (<>) "discarded." $ JS.call "push" ["search[0]"]
             , "search = search.slice(1);"
             ]
@@ -278,7 +278,7 @@ defineErrors = do
                             sync = case snd $ snd tup of 
                                 Nothing -> "undefined"
                                 Just reg -> reg
-                        in
+                        in -- for each error name, you look up the next valid token name in matchers and use it
                             (name) <> ": " <> (JS.call fn.makeError [asToken $ name, regex, sync ]) 
                     )
                 kv = Str.joinWith ",\n" errorMatchers
@@ -292,11 +292,12 @@ defineMakeError = do
                 [ JS.declareConst "initialMatcher" $ JS.call fn.makeMatcher ["name", "regex"]
                 , JS.return $ JS.function "matcher" ["input"]
                     [ JS.declareConst "initialResult" $ JS.call "initialMatcher" ["input"]
-                    , JS.ifExpr "!sync || initialResult === null"
+                    , JS.declareConst "syncMatcher" $ "matchers[" <> "sync" <> "]"
+                    , JS.ifExpr "!syncMatcher || initialResult === null"
                     , JS.thenExpr [JS.return "initialResult"]
                     , JS.elseExpr 
                         [ JS.declareConst "afterMatchInput" "input.slice(initialResult.lexeme.length)"
-                        , JS.declareConst "{discarded, synced}" $ JS.call "discardUntil" ["afterMatchInput", "sync"]
+                        , JS.declareConst "{discarded, synced}" $ JS.call "discardUntil" ["afterMatchInput", "syncMatcher"]
                         , JS.assign "initialResult.originalLexeme" "initialResult.lexeme"
                         , JS.assign "initialResult.lexeme" "initialResult.lexeme + discarded"
                         , JS.return "initialResult"

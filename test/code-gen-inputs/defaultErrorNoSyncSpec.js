@@ -176,7 +176,7 @@ function makeError(name, regex, sync) {
 }
 function lookupError(type) {
   const lookup = {
-    _default: "No match for any token",
+    _default: "I am an error",
   };
   if (lookup[type] !== undefined) {
     return lookup[type];

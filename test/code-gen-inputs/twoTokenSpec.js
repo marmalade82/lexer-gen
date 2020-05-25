@@ -59,10 +59,10 @@ function inputRemains(str) {
  * the regex matches the syncing regex. Lexing should restart from
  * there
  * */
-function discardUntil(str, sync) {
+function discardUntil(str, syncMatcher) {
   let search = str;
   const discarded = [];
-  while (!str.test(sync) && str.length > 0) {
+  while (!syncMatcher(search) && search.length > 0) {
     discarded.push(search[0]);
     search = search.slice(1);
   }
@@ -167,11 +167,12 @@ function makeError(name, regex, sync) {
   const initialMatcher = makeMatcher(name, regex);
   return function matcher(input) {
     const initialResult = initialMatcher(input);
-    if (!sync || initialResult === null) {
+    const syncMatcher = matchers[sync];
+    if (!syncMatcher || initialResult === null) {
       return initialResult;
     } else {
       const afterMatchInput = input.slice(initialResult.lexeme.length);
-      const { discarded, synced } = discardUntil(afterMatchInput, sync);
+      const { discarded, synced } = discardUntil(afterMatchInput, syncMatcher);
       initialResult.originalLexeme = initialResult.lexeme;
       initialResult.lexeme = initialResult.lexeme + discarded;
       return initialResult;
