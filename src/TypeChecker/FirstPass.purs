@@ -1,6 +1,5 @@
 module FirstPass 
     ( firstPass
-    , nameExists
     ) where
 
 import Prelude
@@ -63,4 +62,4 @@ nameExists tok arr =
     where 
         sameTok :: Token -> Token -> Boolean
         sameTok t1 t2 = 
-            t1.type == t2.type && t1.lexeme == t2.lexeme && t1.column == t2.column && t1.line == t2.line
+            t1.type == t2.type && t1.lexeme == t2.lexeme 

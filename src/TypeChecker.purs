@@ -6,9 +6,9 @@ import Control.Monad.State (evalState, get)
 import Data.Array as Array
 import Data.Maybe (Maybe(..))
 import Data.Traversable (foldr, sequence)
-import FirstPass (firstPass, nameExists)
+import FirstPass (firstPass)
 import TypeChecker.Internals (Context, TypeState)
-import Types (GenAST(..))
+import Types (GenAST(..), Token)
 
 {- This module scans the generated AST and ensures that everything is correctly typed.
     The typing rules are simple:
@@ -130,3 +130,13 @@ checkUniqueErrors (Name tok) = do
         pure { errors: [error] }
 checkUniqueErrors _ = pure emptyResults
 
+
+nameExists :: Token -> Array Token -> Boolean
+nameExists tok arr = 
+    case Array.find (sameTok tok) arr of 
+        Nothing -> false
+        _ -> true
+    where 
+        sameTok :: Token -> Token -> Boolean
+        sameTok t1 t2 = 
+            t1.type == t2.type && t1.lexeme == t2.lexeme && t1.column == t2.column && t1.line == t2.line
