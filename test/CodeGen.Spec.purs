@@ -4,31 +4,19 @@ module Test.CodeGenSpec where
 import Prelude
 
 import CodeGen (GenAST(..), TokenType(..), generate)
-import Data.Array.NonEmpty (appendArray, singleton)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
-import Data.String as Str
-import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Aff as Aff
 import Effect.Class (liftEffect)
 import Effect.Console (log)
-import Effect.Ref as Ref
-import Effect.Unsafe (unsafePerformEffect)
-import Node.Buffer (thaw)
-import Node.Buffer as Buf
-import Node.Buffer.Class (class MutableBuffer)
-import Node.Buffer.Immutable as ImmBuf
-import Node.ChildProcess (ChildProcess)
 import Node.ChildProcess as CP
 import Node.Encoding (Encoding(..))
 import Node.FS.Sync as FS
 import Node.Globals (__dirname)
 import Node.Path (FilePath)
 import Node.Path as Path
-import Node.Process as Process
-import Node.Stream as Stream
-import Test.Spec (Spec, after_, describe, it, pending)
+import Test.Spec (Spec, after_, describe, it)
 import Test.Spec.Assertions (shouldEqual)
 
 {- Tests for this module need to generate a test tokenizing module in ES6,
