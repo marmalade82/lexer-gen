@@ -4,6 +4,8 @@ module Test.TypeCheckerSpec where
 import Prelude
 
 import Data.Array (length)
+import Effect.Class (liftEffect)
+import Effect.Class.Console (log)
 import Test.Spec (Spec, describe, describeOnly, it)
 import Test.Spec.Assertions (shouldEqual)
 import TypeChecker (typecheck)
@@ -170,6 +172,7 @@ uniqueErrorsSpec = describe "No two error definitions can use the same token def
                     ]
                 ]
             result = typecheck program
+        liftEffect $ log (show result)
         length result.errors `shouldEqual` 0
     it "two matching duplicates" do 
         let program = Program
@@ -236,6 +239,50 @@ uniqueErrorsSpec = describe "No two error definitions can use the same token def
 
 definedErrorsSpec :: Spec Unit
 definedErrorsSpec = describe "Error definitions must use defined tokens" do
+    it "sync defined correctly" do 
+        let program = Program
+                [ NormalSpecs
+                    [ NormalSpec 
+                        [ Name { type: N, lexeme: "hi", column: 0, line: 0 }
+
+                        ]
+                    , NormalSpec
+                        [ Name { type: N, lexeme: "bye", column: 5, line: 5 }
+
+                        ]
+                    ]
+                , ErrorSpecs
+                    [ ErrorSpec
+                        [ Name { type: N, lexeme: "hi", column: 10, line: 10 }
+                        , ErrorMessage { type: EM, lexeme: "error", column: 15, line: 15 }
+                        , Name { type: N, lexeme: "bye", column: 15, line: 15 }
+                        ]
+                    ]
+                ]
+            result = typecheck program
+        length result.errors `shouldEqual` 0
+    it "sync defined incorrectly" do 
+        let program = Program
+                [ NormalSpecs
+                    [ NormalSpec 
+                        [ Name { type: N, lexeme: "hi", column: 0, line: 0 }
+
+                        ]
+                    , NormalSpec
+                        [ Name { type: N, lexeme: "bye", column: 5, line: 5 }
+
+                        ]
+                    ]
+                , ErrorSpecs
+                    [ ErrorSpec
+                        [ Name { type: N, lexeme: "hi", column: 10, line: 10 }
+                        , ErrorMessage { type: EM, lexeme: "error", column: 15, line: 15 }
+                        , Name { type: N, lexeme: "sigh", column: 15, line: 15 }
+                        ]
+                    ]
+                ]
+            result = typecheck program
+        length result.errors `shouldEqual` 1
     it "one error defined incorrectly" do 
         let program = Program
                 [ NormalSpecs

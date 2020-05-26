@@ -42,7 +42,7 @@ firstPass ast = case ast of
             case generateName $ head arr of 
                 Nothing -> pure unit
                 Just name -> do 
-                    if nameExists name errors
+                    if not $ nameExists name errors
                     then put ctx { errorTypes = Array.cons name errors }
                     else pure unit
         _ -> pure unit

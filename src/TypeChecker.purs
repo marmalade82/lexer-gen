@@ -88,12 +88,12 @@ checkUniqueToken :: GenAST -> TypeState CheckResults
 checkUniqueToken (Name tok) = do
     ctx <- get
     let tokens = ctx.tokenTypes
-    if nameExists tok tokens
-    then
-        pure emptyResults
-    else do 
+    if tokenAlreadyExists tok tokens
+    then do
         let error = tok.lexeme <> "has already been used"
         pure { errors: [error] }
+    else do 
+        pure emptyResults
 checkUniqueToken _ = pure emptyResults
 
 checkReserved :: GenAST -> TypeState CheckResults
@@ -111,7 +111,7 @@ checkErrorTokenUsage :: GenAST -> TypeState CheckResults
 checkErrorTokenUsage (Name tok) = do
     ctx <- get
     let tokens = ctx.tokenTypes
-    if nameExists tok tokens
+    if errorTokenDefined tok tokens
     then pure emptyResults
     else do 
         let error = tok.lexeme <> " was not defined as a token"
@@ -122,21 +122,41 @@ checkUniqueErrors :: GenAST -> TypeState CheckResults
 checkUniqueErrors (Name tok) = do
     ctx <- get
     let errors = ctx.errorTypes
-    if nameExists tok errors
-    then 
-        pure emptyResults -- this error was the defining error
-    else do
+    if errorAlreadyExists tok errors
+    then do
         let error = tok.lexeme <> " has already been used to define an error"
         pure { errors: [error] }
+    else do
+        pure emptyResults -- this error was the defining error
 checkUniqueErrors _ = pure emptyResults
 
 
-nameExists :: Token -> Array Token -> Boolean
-nameExists tok arr = 
+tokenAlreadyExists :: Token -> Array Token -> Boolean
+tokenAlreadyExists tok arr = 
     case Array.find (sameTok tok) arr of 
         Nothing -> false
         _ -> true
     where 
         sameTok :: Token -> Token -> Boolean
         sameTok t1 t2 = 
-            t1.type == t2.type && t1.lexeme == t2.lexeme && t1.column == t2.column && t1.line == t2.line
+            t1.type == t2.type && t1.lexeme == t2.lexeme && t1.column /= t2.column && t1.line /= t2.line
+
+errorTokenDefined :: Token -> Array Token -> Boolean
+errorTokenDefined tok arr = 
+    case Array.find (sameTok tok) arr of 
+        Nothing -> false
+        _ -> true
+    where 
+        sameTok :: Token -> Token -> Boolean
+        sameTok t1 t2 = 
+            t1.type == t2.type && t1.lexeme == t2.lexeme 
+
+errorAlreadyExists :: Token -> Array Token -> Boolean
+errorAlreadyExists tok arr = 
+    case Array.find (sameTok tok) arr of 
+        Nothing -> false
+        _ -> true
+    where 
+        sameTok :: Token -> Token -> Boolean
+        sameTok t1 t2 = 
+            t1.type == t2.type && t1.lexeme == t2.lexeme && t1.column /= t2.column && t1.line /= t2.line
