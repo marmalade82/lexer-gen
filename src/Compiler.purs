@@ -35,7 +35,7 @@ compile prog = do
     parserTokens <- doLex prog
     tree <- doParse parserTokens
     checkedTree <- doTypeCheck tree
-    pure $ generate checkedTree
+    doGenerate checkedTree
     where
         doLex :: String -> Either Errors (NonEmptyArray Parser.Token)
         doLex p = do
@@ -62,6 +62,8 @@ compile prog = do
             if noErrors results
             then Left $ results.errors
             else pure ast
+        doGenerate :: GenAST -> Either Errors Lexer
+        doGenerate ast = Right $ generate ast
 
 findErrors :: Array Token -> Either Errors Unit
 findErrors arr = do
