@@ -12,7 +12,7 @@ import TypeChecker (typecheck)
 import Types (GenAST(..), TokenType(..))
 
 spec :: Spec Unit
-spec = describeOnly "Test type checking of parsed AST" do
+spec = describe "Test type checking of parsed AST" do
     uniqueNamesSpec
     reservedNamesSpec
     uniqueErrorsSpec

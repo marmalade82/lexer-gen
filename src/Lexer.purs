@@ -1,4 +1,8 @@
-module Lexer where 
+module Lexer
+    ( Token
+    , TokenType(..)
+    , lex
+    ) where
 
 import Prelude
 

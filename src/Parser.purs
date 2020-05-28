@@ -5,6 +5,7 @@ module Parser
     , ParseState
     , parse
     , Stack
+    , toString
     )
 
 
@@ -20,7 +21,7 @@ import Data.List.Lazy as LL
 import Data.Map (Map, fromFoldable, lookup)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
-import ParserAST (BuildCommand(..), TreeBuildState, AstStack, buildTree, emptyBuildState, extract)
+import ParserAST (BuildCommand(..), TreeBuildState, buildTree, emptyBuildState, extract)
 import ParserTypes (AST(..), DerivationType(..), TokenType(..), Token, equals)
 
 
@@ -45,6 +46,10 @@ type ParseError =
     , line :: Int
     , column :: Int
     }
+
+toString :: ParseError -> String
+toString err = 
+        show err.line <> ":" <> show err.column <> ": " <> err.message
 
 parse :: NonEmptyArray Token -> ParseResult
 parse arr = 

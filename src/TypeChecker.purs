@@ -1,4 +1,9 @@
-module TypeChecker where
+module TypeChecker 
+    ( typecheck
+    , CheckResults
+    , Errors
+    , noErrors
+    ) where
 
 import Prelude
 
@@ -33,6 +38,8 @@ initialContext =
     , errorTypes: []
     }
 
+noErrors :: CheckResults -> Boolean
+noErrors results = Array.null results.errors
 
 typecheck :: GenAST -> CheckResults
 typecheck ast = evalState (doTypeCheck ast) initialContext

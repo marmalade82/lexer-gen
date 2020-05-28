@@ -17,4 +17,4 @@ main = launchAff_ do
   specs <- discover ".*Spec"
   un Identity $ runSpecT testConfig [consoleReporter] specs
   where
-      testConfig = { slow: Milliseconds $ toNumber 5000 , timeout: Just $ Milliseconds $ toNumber 15000, exit: false }
+      testConfig = { slow: Milliseconds $ toNumber 5000 , timeout: Just $ Milliseconds $ toNumber 30000, exit: false }
