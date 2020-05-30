@@ -1,6 +1,8 @@
 module Compiler 
     ( compile
-        
+    , CompileResult
+    , Errors
+    , Lexer
     ) where 
 
 import Prelude
@@ -29,6 +31,7 @@ import TypeChecker (noErrors, typecheck)
 
 type Errors = Array String
 type Lexer = String
+type CompileResult = Either Errors Lexer
 
 compile :: String -> Either Errors Lexer
 compile prog = do
@@ -41,7 +44,7 @@ compile prog = do
         doLex p = do
             let tokens = lex p
             findErrors tokens
-            let parserTokens_ = NonEmptyArray.fromArray $ convertForParser <$> tokens
+            let parserTokens_ = NonEmptyArray.fromArray $ Array.snoc (convertForParser <$> tokens) Parser.eof
             case parserTokens_ of 
                 Nothing -> Left ["Program is empty. Could not compile"]
                 Just parserTokens -> do

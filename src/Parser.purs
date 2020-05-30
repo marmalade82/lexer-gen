@@ -6,6 +6,7 @@ module Parser
     , parse
     , Stack
     , toString
+    , eof
     )
 
 
@@ -39,12 +40,21 @@ type ParseResult =
     { tree :: Maybe AST
     , success :: Boolean
     , errors :: Array ParseError
+    , diagnosticError :: String
     }
 
 type ParseError = 
     { message :: String
     , line :: Int
     , column :: Int
+    }
+
+eof :: Token
+eof = 
+    { type: EOF
+    , lexeme: ""
+    , line: -1
+    , column: -1
     }
 
 toString :: ParseError -> String
@@ -76,6 +86,7 @@ doParse ts =
                 { tree: Nothing
                 , success: false
                 , errors: []
+                , diagnosticError: ""
                 }
             }
 
@@ -89,19 +100,16 @@ doParse ts =
         then case buildResults of 
                 Left err -> state.result
                     { success = true
-                    , errors = Array.cons 
-                                    { line: -1, column: -1
-                                    , message: "Stack was " <> show state.stack <> " when build failed: " <> err
-                                    } state.result.errors
+                    , diagnosticError = "Stack was " <> show state.stack <> " when build failed: " <> err
                     }
                 Right ast -> state.result 
                     { success = true
                     , tree = Just $ ast
                     }
-        else state.result
+        else -- we error because we finished parsing without consuming the stack
+            state.result
                 { success = false
-                , errors = Array.cons { line: -1, column: -1, 
-                                        message: "Stack was " <> show state.stack } state.result.errors
+                , diagnosticError = "Stack was " <> show state.stack 
                 }
     where
         acc :: ParseState -> Token -> ParseState

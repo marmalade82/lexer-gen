@@ -3,15 +3,17 @@ module Test.ParserSpec where
 
 import Prelude
 
+import Data.Array as Array
 import Data.Array.NonEmpty (appendArray, singleton)
 import Data.Maybe (Maybe(..))
 import Parser (AST(..), ParseResult, Token, TokenType(..), parse)
-import Test.Spec (Spec, describe, it, pending)
+import Test.Spec (Spec, describe, describeOnly, it, pending)
 import Test.Spec.Assertions (shouldEqual)
 
 
 spec :: Spec Unit
-spec = describe "Parsing" do 
+spec = describeOnly "Parsing" do 
+--spec = describe "Parsing" do 
     headerSpec 
     normalSectionSpec
     errorSectionSpec
@@ -315,7 +317,15 @@ combinedSectionSpec = describe "Combined sections are parsed correctly" do
 
 errorSpec :: Spec Unit
 errorSpec = describe "Error messages are reported" do
-    pending "Error messages must also be returned from the parse"
+    it "Error messages must also be returned from the parse" do
+        let tokens = makeBasicToken <$>
+                singleton NormalHeader `appendArray` 
+                    [ Name, Regex
+                    , EOF
+                    ]
+            result = parse tokens
+        result.success `shouldEqual` false
+        Array.length result.errors `shouldEqual` 1
     pending "Parse attempts to recover by discarding tokens until it can sync"
     pending "Parse parses with warnings when possible"
 
