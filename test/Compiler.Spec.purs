@@ -11,7 +11,7 @@ import Test.Spec (class Example, Spec, SpecT(..), describe, describeOnly, it, it
 import Test.Spec.Assertions (fail, shouldEqual)
 
 spec :: Spec Unit
-spec = describe "Integration test compiler" do
+spec = describeOnly "Integration test compiler" do
     lexerSpec
     parserSpec
     typecheckSpec
