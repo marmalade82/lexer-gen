@@ -20,6 +20,7 @@ import Lexer (Token, TokenType(..), lex)
 import Lexer as Lexer
 import Parser (AST(..), parse)
 import Parser as Parser
+--import SideEffect.Log (sideEffectLog)
 import TypeChecker (noErrors, typecheck)
 
 
@@ -34,11 +35,12 @@ type Lexer = String
 type CompileResult = Either Errors Lexer
 
 compile :: String -> Either Errors Lexer
-compile prog = do
+compile prog = do   
     parserTokens <- doLex prog
     tree <- doParse parserTokens
     checkedTree <- doTypeCheck tree
-    doGenerate checkedTree
+    lexer <- doGenerate checkedTree
+    pure lexer
     where
         doLex :: String -> Either Errors (NonEmptyArray Parser.Token)
         doLex p = do
@@ -57,14 +59,14 @@ compile prog = do
                 case results.tree of 
                     Nothing -> Left $ ["Error during parsing. No AST could be generated"] <> (Parser.toString <$> results.errors)
                     Just tree -> convertForCodeGen tree
-            else 
+            else do
                 Left $ Parser.toString <$> results.errors
         doTypeCheck :: GenAST -> Either Errors GenAST
         doTypeCheck ast = do 
             let results = typecheck ast
             if noErrors results
-            then Left $ results.errors
-            else pure ast
+            then pure $ ast
+            else Left $ results.errors
         doGenerate :: GenAST -> Either Errors Lexer
         doGenerate ast = Right $ generate ast
 

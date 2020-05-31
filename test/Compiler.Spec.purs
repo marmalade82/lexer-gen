@@ -9,11 +9,13 @@ import Data.Maybe (Maybe(..))
 import Data.String (Pattern(..))
 import Data.String as Str
 import Data.Traversable (sequence)
-import Test.Spec (class Example, Spec, SpecT(..), describe, describeOnly, it)
+import Effect.Class.Console (log)
+--import SideEffect.Log (sideEffectLog)
+import Test.Spec (class Example, Spec, SpecT(..), describe, describeOnly, it, itOnly)
 import Test.Spec.Assertions (fail, shouldEqual)
 
 spec :: Spec Unit
-spec = describeOnly "Integration test compiler" do
+spec = describe "Integration test compiler" do
     lexerSpec
     parserSpec
     typecheckSpec
@@ -61,18 +63,18 @@ parserSpec = describe "Test parsing errors" do
 testErrors res x = do 
     case res of 
         Left errors -> x errors
-        _ -> fail "Result didn't have errors"
+        x -> fail $ "Result didn't have errors: "
 
+-- Leaving off types here because I don't understand how to write the signature
 --testNoErrors :: forall m t arg g. Monad m => Example t arg g => CompileResult -> SpecT g arg m Unit
 testNoErrors res = do 
     case res of 
         Right _ -> pure unit
-        _ -> fail "Result should not have errors"
+        x -> fail $ "Result should not have errors: "
 
 typecheckSpec :: Spec Unit
-typecheckSpec = describe "Test typechecker errors" do
+typecheckSpec = describeOnly "Test typechecker errors" do
     uniqueNamesSpec
-    reservedNamesSpec
     uniqueErrorsSpec
     definedErrorsSpec
     pure unit
@@ -83,27 +85,19 @@ typecheckSpec = describe "Test typechecker errors" do
             it "no names" do 
                 let program = "%%_normal_%%"
                     result = compile program
-                testErrors result 
-                    (\errors -> do 
-                        Array.length errors `shouldEqual` 0 
-                    )
+                    
+                testNoErrors result
             it "one name" do 
                 let program = "%%_normal_%%" <> "\n" <> "hi (regex);"
                     result = compile program
-                testErrors result 
-                    (\errors -> do 
-                        Array.length errors `shouldEqual` 0 
-                    )
+                testNoErrors result
             it "no duplicates" do
                 let program = 
                         "%%_normal_%%" <> "\n" <> 
                         "hi (regex);" <> "\n" <> 
                         "safe (regex);"
                     result = compile program
-                testErrors result 
-                    (\errors -> do 
-                        Array.length errors `shouldEqual` 0 
-                    )
+                testNoErrors result
             it "one duplicate" do 
                 let program = 
                         "%%_normal_%%" <> "\n" <> 
@@ -113,6 +107,8 @@ typecheckSpec = describe "Test typechecker errors" do
                 testErrors result 
                     (\errors -> do 
                         Array.length errors `shouldEqual` 1 
+                        _ <- sequence $ (\x -> Str.contains (Pattern "already been used") x `shouldEqual` true) <$> errors
+                        pure unit
                     )
             it "two matching duplicates" do
                 let program = 
@@ -124,6 +120,8 @@ typecheckSpec = describe "Test typechecker errors" do
                 testErrors result 
                     (\errors -> do 
                         Array.length errors `shouldEqual` 2 
+                        _ <- sequence $ (\x -> Str.contains (Pattern "already been used") x `shouldEqual` true) <$> errors
+                        pure unit
                     )
             it "two different duplicates" do
                 let program =
@@ -136,18 +134,8 @@ typecheckSpec = describe "Test typechecker errors" do
                 testErrors result 
                     (\errors -> do 
                         Array.length errors `shouldEqual` 2
-                    )
-        reservedNamesSpec :: Spec Unit
-        reservedNamesSpec = describe "Reserved token names are rejected" do 
-            it "reserved default is rejected" do 
-                let program = Str.joinWith "\n"
-                        [ "%%_normal_%%"
-                        , "$Default (regex);"
-                        ]
-                    result = compile program
-                testErrors result 
-                    (\errors -> do 
-                        Array.length errors `shouldEqual` 1
+                        _ <- sequence $ (\x -> Str.contains (Pattern "already been used") x `shouldEqual` true) <$> errors
+                        pure unit
                     )
         uniqueErrorsSpec :: Spec Unit
         uniqueErrorsSpec = describe "No two error definitions can use the same token definition" do 
@@ -184,6 +172,8 @@ typecheckSpec = describe "Test typechecker errors" do
                 testErrors result 
                     ( \errors -> do 
                         Array.length errors `shouldEqual` 2
+                        _ <- sequence $ (\x -> Str.contains (Pattern "define an error") x `shouldEqual` true) <$> errors
+                        pure unit
                     )
             it "two sets of duplicates" do
                 let program = Str.joinWith "\n"
@@ -200,6 +190,8 @@ typecheckSpec = describe "Test typechecker errors" do
                 testErrors result 
                     ( \errors -> do 
                         Array.length errors `shouldEqual` 2
+                        _ <- sequence $ (\x -> Str.contains (Pattern "define an error") x `shouldEqual` true) <$> errors
+                        pure unit
                     )
         definedErrorsSpec :: Spec Unit
         definedErrorsSpec = describe "Error definitions must use defined tokens" do
@@ -225,6 +217,8 @@ typecheckSpec = describe "Test typechecker errors" do
                 testErrors result 
                     ( \errors -> do 
                         Array.length errors `shouldEqual` 1
+                        _ <- sequence $ (\x -> Str.contains (Pattern "was not defined") x `shouldEqual` true) <$> errors
+                        pure unit
                     )
             it "one error defined incorrectly" do 
                 let program = Str.joinWith "\n"
@@ -238,6 +232,8 @@ typecheckSpec = describe "Test typechecker errors" do
                 testErrors result 
                     ( \errors -> do 
                         Array.length errors `shouldEqual` 1
+                        _ <- sequence $ (\x -> Str.contains (Pattern "was not defined") x `shouldEqual` true) <$> errors
+                        pure unit
                     )
             it "two errors defined incorrectly" do
                 let program = Str.joinWith "\n"
@@ -251,5 +247,7 @@ typecheckSpec = describe "Test typechecker errors" do
                     result = compile program
                 testErrors result 
                     ( \errors -> do 
-                        Array.length errors `shouldEqual` 1
+                        Array.length errors `shouldEqual` 2
+                        _ <- sequence $ (\x -> Str.contains (Pattern "was not defined") x `shouldEqual` true) <$> errors
+                        pure unit
                     )

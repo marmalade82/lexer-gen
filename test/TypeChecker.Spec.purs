@@ -6,6 +6,7 @@ import Prelude
 import Data.Array (length)
 import Effect.Class (liftEffect)
 import Effect.Class.Console (log)
+--import SideEffect.Log (sideEffectLog)
 import Test.Spec (Spec, describe, describeOnly, it)
 import Test.Spec.Assertions (shouldEqual)
 import TypeChecker (typecheck)
@@ -59,12 +60,12 @@ uniqueNamesSpec = describe "Names must be unique" do
         let program = Program
                 [ NormalSpecs
                     [ NormalSpec 
-                        [ Name { type: N, lexeme: "hi", column: 0, line: 0 }
-
+                        [ Name { type: N, lexeme: "hi", column: 0, line: 1 }
+                        , Regex { type: R, lexeme: "(regex)", column: 3, line: 1}
                         ]
                     , NormalSpec
-                        [ Name { type: N, lexeme: "hi", column: 5, line: 5 }
-
+                        [ Name { type: N, lexeme: "hi", column: 0, line: 2 }
+                        , Regex { type: R, lexeme: "(regex)", column: 3, line: 2}
                         ]
                     ]
                 ]

@@ -97,7 +97,7 @@ checkUniqueToken (Name tok) = do
     let tokens = ctx.tokenTypes
     if tokenAlreadyExists tok tokens
     then do
-        let error = tok.lexeme <> "has already been used"
+        let error = tok.lexeme <> " has already been used"
         pure { errors: [error] }
     else do 
         pure emptyResults
@@ -146,7 +146,7 @@ tokenAlreadyExists tok arr =
     where 
         sameTok :: Token -> Token -> Boolean
         sameTok t1 t2 = 
-            t1.type == t2.type && t1.lexeme == t2.lexeme && t1.column /= t2.column && t1.line /= t2.line
+            t1.type == t2.type && t1.lexeme == t2.lexeme && (t1.column /= t2.column || t1.line /= t2.line)
 
 errorTokenDefined :: Token -> Array Token -> Boolean
 errorTokenDefined tok arr = 
@@ -166,4 +166,4 @@ errorAlreadyExists tok arr =
     where 
         sameTok :: Token -> Token -> Boolean
         sameTok t1 t2 = 
-            t1.type == t2.type && t1.lexeme == t2.lexeme && t1.column /= t2.column && t1.line /= t2.line
+            t1.type == t2.type && t1.lexeme == t2.lexeme && (t1.column /= t2.column || t1.line /= t2.line)
