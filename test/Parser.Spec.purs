@@ -13,7 +13,6 @@ import Test.Spec.Assertions (shouldEqual)
 
 spec :: Spec Unit
 spec = describe "Parsing" do 
---spec = describe "Parsing" do 
     headerSpec 
     normalSectionSpec
     errorSectionSpec
