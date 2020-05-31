@@ -20,14 +20,14 @@ import Node.FS.Sync as FS
 import Node.Globals (__dirname)
 import Node.Path (FilePath)
 import Node.Path as Path
-import SideEffect.Log (sideEffectLog)
-import Test.Spec (class Example, Spec, SpecT(..), describe, describeOnly, it, itOnly, pending)
+--import SideEffect.Log (sideEffectLog)
+import Test.Spec (class Example, Spec, SpecT(..), after_, describe, describeOnly, it, itOnly, pending)
 import Test.Spec.Assertions (fail, shouldEqual)
 
 
 
 genSpec :: Spec Unit
-genSpec = describeOnly "Generated code performs as expected" do
+genSpec = after_ waitForPrettier $ describe "Generated code performs as expected" do
     -- TODO : Remove parentheses and quotes while lexing
     emptySpec
     oneTokenSpec

@@ -20,7 +20,7 @@ import Lexer (Token, TokenType(..), lex)
 import Lexer as Lexer
 import Parser (AST(..), parse)
 import Parser as Parser
-import SideEffect.Log (sideEffectLog)
+--import SideEffect.Log (sideEffectLog)
 import TypeChecker (noErrors, typecheck)
 
 
