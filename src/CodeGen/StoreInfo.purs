@@ -11,14 +11,16 @@ where
     from the AST.
 -}
 
-import Prelude
 import Control.Monad.State
+import Prelude
+
 import Data.Array (head, last, length, take, index)
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
+import Data.String (Pattern(..))
+import Data.String as Str
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..), fst, snd)
-
 import Types (GenAST(..))
 
 type Context = 
@@ -68,12 +70,22 @@ generateName :: Maybe GenAST -> CodeState String
 generateName (Just (Name tok)) = pure tok.lexeme
 generateName _ = pure ""
 
+-- Remove outside parentheses if they are present
 generateRegex :: Maybe GenAST -> CodeState String
-generateRegex (Just (Regex tok)) = pure $ "new RegExp(" <> "\"^" <> tok.lexeme <> "\"" <> ")"
+generateRegex (Just (Regex tok)) = 
+    let removeParens = do 
+            removeFront <- Str.stripPrefix (Pattern "(") tok.lexeme
+            removeBack <- Str.stripSuffix (Pattern ")") removeFront
+            pure removeBack
+        lexeme = case removeParens of 
+            Nothing -> tok.lexeme
+            Just x -> x
+    in  pure $ "new RegExp(" <> "\"^" <> lexeme <> "\"" <> ")"
 generateRegex _ = pure ""
 
 generateMessage :: Maybe GenAST -> CodeState String
-generateMessage (Just (ErrorMessage tok)) = pure tok.lexeme
+generateMessage (Just (ErrorMessage tok)) = 
+    pure tok.lexeme
 generateMessage _ = pure ""
 
 registerTokenRegex :: String -> String -> CodeState Unit

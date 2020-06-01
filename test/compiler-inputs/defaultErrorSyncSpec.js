@@ -159,7 +159,7 @@ function makeMatcher(tokenName, regex) {
   };
 }
 const matchers = {
-  space: makeMatcher(space, new RegExp("^( )")),
+  space: makeMatcher(space, new RegExp("^ ")),
 };
 function makeError(name, regex, sync) {
   const initialMatcher = makeMatcher(name, regex);

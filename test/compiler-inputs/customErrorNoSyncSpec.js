@@ -161,7 +161,7 @@ function makeMatcher(tokenName, regex) {
   };
 }
 const matchers = {
-  space: makeMatcher(space, new RegExp("^( )")),
+  space: makeMatcher(space, new RegExp("^ ")),
 };
 function makeError(name, regex, sync) {
   const initialMatcher = makeMatcher(name, regex);
@@ -193,6 +193,6 @@ function lookupError(type) {
 }
 const errors = {
   _default: makeError(_default, new RegExp(".*"), undefined),
-  me: makeError(me, new RegExp("^(I)"), undefined),
-  verb: makeError(verb, new RegExp("^(am)"), undefined),
+  me: makeError(me, new RegExp("^I"), undefined),
+  verb: makeError(verb, new RegExp("^am"), undefined),
 };

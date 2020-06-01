@@ -159,7 +159,7 @@ function makeMatcher(tokenName, regex) {
   };
 }
 const matchers = {
-  me: makeMatcher(me, new RegExp("^(I)")),
+  me: makeMatcher(me, new RegExp("^I")),
 };
 function makeError(name, regex, sync) {
   const initialMatcher = makeMatcher(name, regex);

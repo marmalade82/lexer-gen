@@ -160,8 +160,8 @@ function makeMatcher(tokenName, regex) {
   };
 }
 const matchers = {
-  me: makeMatcher(me, new RegExp("^(I)")),
-  verb: makeMatcher(verb, new RegExp("^(am)")),
+  me: makeMatcher(me, new RegExp("^I")),
+  verb: makeMatcher(verb, new RegExp("^am")),
 };
 function makeError(name, regex, sync) {
   const initialMatcher = makeMatcher(name, regex);
