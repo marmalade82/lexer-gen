@@ -1,0 +1,11 @@
+{
+  "name": "package",
+  "version": "1.0.0",
+  "description": "Builds and bundles the package for distribution",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Howard Chen",
+  "license": "ISC"
+}
