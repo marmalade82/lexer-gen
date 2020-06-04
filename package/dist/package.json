@@ -1,0 +1,15 @@
+{
+  "name": "@marmalade82/lexer-gen",
+  "private": false,
+  "version": "0.1.0",
+  "description": "A simple library with one compile function. Compiles a lexer specification into a lexer",
+  "main": "lexer-gen.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "publish": "npm publish --access public"
+  },
+  "peerDependencies": {
+  },
+  "author": "Howard Chen",
+  "license": "ISC"
+}
