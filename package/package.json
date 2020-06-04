@@ -4,8 +4,12 @@
   "description": "Builds and bundles the package for distribution",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "node ./build.js"
   },
   "author": "Howard Chen",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "prettier": "^2.0.5"
+  }
 }

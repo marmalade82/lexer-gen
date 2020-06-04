@@ -3,6 +3,7 @@ module Compiler
     , CompileResult
     , Errors
     , Lexer
+    , exec
     ) where 
 
 import Prelude
@@ -16,11 +17,11 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Either (Either(..), isLeft, isRight)
 import Data.Maybe (Maybe(..))
 import Data.Traversable (sequence)
+import Effect (Effect)
 import Lexer (Token, TokenType(..), lex)
 import Lexer as Lexer
 import Parser (AST(..), parse)
 import Parser as Parser
---import SideEffect.Log (sideEffectLog)
 import TypeChecker (noErrors, typecheck)
 
 
@@ -30,10 +31,30 @@ import TypeChecker (noErrors, typecheck)
     for display to the user in whatever format the calling program desires
 -}
 
+type Output = 
+    { errors :: Errors
+    , lexer :: String
+    }
+
+-- This function takes the input lexing program and returns an object with any errors,
+-- and the lexer if the compilation succeeded. Needed for an easy bridge to JavaScript
+exec :: String -> Output
+exec prog = do 
+    case compile prog of 
+        Left errors -> 
+            { errors: errors
+            , lexer: ""
+            }
+        Right lexer -> 
+            { errors: []
+            , lexer: lexer
+            }
+
 type Errors = Array String
 type Lexer = String
 type CompileResult = Either Errors Lexer
 
+-- Performs compilation and generates either errors or the lexing program
 compile :: String -> Either Errors Lexer
 compile prog = do   
     parserTokens <- doLex prog
