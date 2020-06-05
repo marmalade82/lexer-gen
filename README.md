@@ -46,7 +46,7 @@ Pre-requisites:
 - NPM >= 6.13.4
 
 To run the tests, use `spago test` from the root directory.
-To generate the production build, run `npm run build` from the `/packages` directory, and a bundle will be generated in `/packages/dist`
+To generate the production build, run `npm run build` from the `/packages` directory, and a bundle will be generated in `/packages/dist/lexer-gen.js`
 
 ## Contact
 
